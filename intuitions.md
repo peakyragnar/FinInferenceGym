@@ -2,7 +2,11 @@
 
 This document stays brief. It records the core intuitions Michael needs to internalize as the Financial Inference Gym is built layer by layer.
 
-## 1. Hidden State Comes First
+It is organized by intuition bucket, not as a long numbered ladder.
+
+## 1. Hidden Company State
+
+### a. Core Claim
 
 A company is not the same thing as its visible data.
 
@@ -18,6 +22,8 @@ hidden company reality
 
 Financial data is not truth. It is evidence.
 
+### b. Noisy Emissions
+
 Examples of noisy emissions:
 
 - Reported revenue growth
@@ -32,7 +38,7 @@ Examples of noisy emissions:
 
 The agent's first job is not to summarize these emissions. The agent's job is to infer the hidden state that generated them.
 
-## 2. Why This Matters
+### c. Why This Matters
 
 Markets usually do not misprice obvious information for long.
 
@@ -60,7 +66,7 @@ demand is weakening underneath the reported numbers
 
 That is the primitive the gym must train.
 
-## 3. The Core Loop
+### d. Core Loop
 
 The project is built around this loop:
 
@@ -83,4 +89,3 @@ It should ask:
 - Was that gap tradable after costs, timing, uncertainty, and risk?
 
 Money comes later. First, the system must learn to form better beliefs.
-
