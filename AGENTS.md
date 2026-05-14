@@ -2,6 +2,17 @@
 
 Michael owns this project.
 
+## Relationship to other documents
+
+This file is the **project operating manual** — the teaching-first mandate, the 15-layer conceptual curriculum, and the non-negotiable process rules. It is *not* the operational build sequence.
+
+- For the operational 12-week build plan (what gets built in what week, with exit criteria and slippage watches), see [BUILD.md](BUILD.md).
+- For the architectural constitution (the 10 first-principles commitments and what is searchable vs architectural), see [DESIGN.md](DESIGN.md).
+- For options proposed and rejected during design, see [DECISIONS.md](DECISIONS.md).
+- For current phase status, see [PROGRESS.md](PROGRESS.md).
+
+The 15-layer pyramid below is **conceptual / curriculum ordering** — it describes the layers of understanding the project teaches. The 12-week BUILD.md plan is the practical execution that builds toward these layers in operational order (which is not the same as the curriculum order). If they appear to conflict, BUILD.md governs execution and AGENTS.md governs the longer-term intellectual destination.
+
 ## Core Goal
 
 Build an AI-native Financial Inference Gym that can discover, evaluate, and refine genuinely new investment ideas. The goal is not to make the existing Wall Street investment process faster with AI. The goal is to build a new kind of evaluator-centered system where AI agents, feature extractors, source diets, valuation rules, and bet structures are tested against hard point-in-time financial outcomes.

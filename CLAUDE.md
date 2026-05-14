@@ -5,13 +5,19 @@ This file directs Claude Code. The authoritative project instructions live in [A
 ## Source of Truth
 
 - [DESIGN.md](DESIGN.md) is the architectural constitution. Principles here are non-negotiable. If anything else conflicts with DESIGN.md, DESIGN.md wins.
-- [BUILD.md](BUILD.md) is the practical 12-week execution plan derived from DESIGN.md. Each phase has teaching, build, design cross-reference, exit criterion, and slippage-watch components.
+- [BUILD.md](BUILD.md) is the practical 12-week execution plan derived from DESIGN.md. **This is the operational source for phase identification, build sequencing, and exit criteria.** Each phase has teaching, build, design cross-reference, exit criterion, and slippage-watch components.
+- [PROGRESS.md](PROGRESS.md) tracks current phase status — what's complete, what's in flight, what's next. Updated at the end of every working session.
 - [DECISIONS.md](DECISIONS.md) is the log of options proposed and explicitly rejected during design, with rationale. Read this to avoid re-litigating settled questions.
-- [AGENTS.md](AGENTS.md) is the operating manual (how to work on the project).
+- [AGENTS.md](AGENTS.md) is the project operating manual. **It contains the long-term 15-layer curriculum pyramid (concept ordering for understanding the project), not the operational build sequence.** For "what do we build next," use BUILD.md. For "why does this layer matter to the long-term vision," use AGENTS.md.
 - [DEFINITIONS.md](DEFINITIONS.md) is the vocabulary. Use those terms precisely — especially the observation vs. label distinction.
 - [intuitions.md](intuitions.md) records the core intuitions Michael is internalizing. Keep it brief; do not let it sprawl.
 
-Order of authority on conflict: **DESIGN.md > AGENTS.md > BUILD.md > everything else.** DESIGN.md changes only by explicit deliberation; BUILD.md updates as we execute.
+**Authority and complementarity:**
+
+- DESIGN.md is non-negotiable on architecture and principles. It changes only by explicit deliberation.
+- BUILD.md is the operational plan. It updates as we execute, but never in conflict with DESIGN.md.
+- AGENTS.md and BUILD.md are **complementary, not competing**. AGENTS.md = curriculum (what concepts the project teaches, in what conceptual order). BUILD.md = execution (what we build in what week). They do not conflict; if they appear to, the issue is interpretation — escalate to Michael.
+- If a genuine conflict exists between DESIGN.md and any other file, DESIGN.md wins.
 
 ## Session Restoration Protocol
 

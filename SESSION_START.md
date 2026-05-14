@@ -10,15 +10,18 @@ Project is FinInferenceGym. Before responding to anything else, read these files
   1. DESIGN.md
   2. CLAUDE.md
   3. BUILD.md
-  4. DECISIONS.md
-  5. AGENTS.md
-  6. DEFINITIONS.md
-  7. intuitions.md
+  4. PROGRESS.md
+  5. DECISIONS.md
+  6. AGENTS.md
+  7. DEFINITIONS.md
+  8. intuitions.md
 
-Then identify the current build phase by checking BUILD.md against git log and the state of toys/. Then summarize back to me:
+PROGRESS.md is the source of truth for current phase and status — read it for "where are we." BUILD.md is the operational source for "what does this phase require." AGENTS.md provides curriculum framing; it does not override BUILD.md on execution.
+
+Then summarize back to me:
 
   - The 10 first-principles commitments from DESIGN.md (one line each).
-  - The current build phase and its exit criteria.
+  - The current build phase per PROGRESS.md, its exit criteria from BUILD.md, and the "Next Action" from PROGRESS.md.
   - The slippage watches for the current phase.
   - The three most relevant DECISIONS.md entries given the phase we're in.
 
