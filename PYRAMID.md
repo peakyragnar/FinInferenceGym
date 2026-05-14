@@ -138,11 +138,56 @@ At `t=10`, the agent did not know the outcome. Its 70% confidence in "biased" wa
 
 The shape of the layer is now visible: belief is what the agent emits at `t_belief`. Outcome is what the world reveals at `t_outcome > t_belief`. The score lives in the gap.
 
+### Stone 3 — what "scoring a belief" means
+
+A **scoring function** is a pure function with this signature:
+
+```
+score(belief, outcome) -> number
+```
+
+Three pieces.
+
+**(a) It takes two inputs.** The belief (Stone 1) and the outcome (Stone 2). It cannot be a function of just one. A scorer that ignored the belief would just be measuring the outcome — useless, outcomes happen regardless of what the agent thought. A scorer that ignored the outcome would be measuring the belief in isolation — no grounding in reality. Both inputs are required, every time.
+
+**(b) It returns a single number.** Not a verdict ("good" / "bad"). Not a structured object. A single number, because we need to:
+- average across many calls to get the agent's overall grade,
+- compare two agents head-to-head,
+- bucket beliefs by claimed confidence and check observed frequency (calibration curve, Stone 8+ later),
+- watch it evolve over time.
+
+All those operations require a single comparable number per `(belief, outcome)` pair.
+
+**(c) Convention in this project: lower is better.** The score is a **loss.** Zero would be perfect; positive is some amount of wrongness. Both Brier and log score follow this convention. ("Higher is better" utility-style scoring also exists and is equivalent up to a sign flip; we stick to loss because it composes more cleanly with averaging and minimization.)
+
+#### Three properties that fall out
+
+- **Deterministic.** Same belief + same outcome → same number, every time. No randomness in the scoring layer.
+- **Pure.** No reading external state. No writing external state. No side effects. Pure functions are trivial to test, trivial to compose, trivial to reason about — and the math invariants from DESIGN.md "Architectural Physics" only hold for pure functions.
+- **Lives on the verification side.** The scoring function is the verification engine in miniature. **The agent never calls the scorer on its own work.** (DESIGN.md #5, the cognition/verification boundary. The agent proposes; the evaluator disposes.)
+
+#### Concrete shape, on the coin
+
+- belief = `{fair: 0.30, biased: 0.70}`
+- outcome = `"biased"`
+- `score(belief, outcome)` = some number `s`
+
+That `s` is the bridge between the cognition side (where the agent formed the belief) and the verification side (where reality revealed the outcome and grades the belief against it). Every higher operation in the evaluator is composition over `s` — averaging, bucketing, comparing.
+
+#### What's deliberately unanswered yet
+
+Stone 3 only establishes the *signature.* Three questions remain, each is its own stone:
+
+- **Why grade the belief and not the outcome?** Stone 4. The deepest commitment in the project.
+- **What separates a good scoring function from a bad one?** Stone 5. The "proper" property — what makes honesty the dominant strategy.
+- **Which specific functions do we use?** Stones 6 and 7 — Brier and log score.
+
+The two scoring functions already in `src/fingym/evaluator/scoring.py` (`brier` and `log_score`) are concrete instances of this signature. Stones 6 and 7 will retroactively teach what those numbers mean and why those two specifically.
+
 ### Stones upcoming in this layer
 
 To be taught next, in this order:
 
-- **Stone 3 — what "scoring a belief" means.** A function that takes a belief and an outcome and returns a number.
 - **Stone 4 — why we score the belief, not the outcome.** The single most important conceptual move in the project. The difference between a learning system and a guessing system.
 - **Stone 5 — what makes a scoring rule "proper."** The mathematical property that means honesty is the dominant strategy.
 - **Stone 6 — the Brier score.** First canonical proper scoring rule.
