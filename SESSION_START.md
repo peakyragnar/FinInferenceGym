@@ -14,9 +14,10 @@ Project is FinInferenceGym. Before responding to anything else, read these files
   5. PROGRESS.md
   6. DECISIONS.md
   7. BIAS_PATTERNS.md
-  8. AGENTS.md
-  9. DEFINITIONS.md
- 10. intuitions.md
+  8. DEFINITIONS.md
+  9. intuitions.md
+
+(AGENTS.md is just a pointer to CLAUDE.md and can be skipped.)
 
 PROGRESS.md is the source of truth for current phase and status. BUILD.md is the operational source for "what does this phase require." TECHNICAL.md is the engineering decisions (stack, database, mechanisms, deployment path). BIAS_PATTERNS.md is the named failure modes to challenge.
 

@@ -14,7 +14,7 @@ For project ethos, see [AGENTS.md](AGENTS.md). For architectural commitments, se
 - **[PROGRESS.md](PROGRESS.md)** — current phase status, checklist, next action. **Source of truth for "where are we right now."** Updated at the end of every working session.
 - **[DECISIONS.md](DECISIONS.md)** — log of alternatives proposed and rejected. Do not re-litigate.
 - **[BIAS_PATTERNS.md](BIAS_PATTERNS.md)** — specific bias-smuggling patterns to challenge aggressively when they reappear.
-- **[AGENTS.md](AGENTS.md)** — project operating manual / ethos.
+- **[AGENTS.md](AGENTS.md)** — minimal pointer file (for non-Claude agents). Just routes to CLAUDE.md.
 - **[DEFINITIONS.md](DEFINITIONS.md)** — glossary. Use these terms precisely.
 - **[intuitions.md](intuitions.md)** — Michael's running conceptual foundations.
 - **[SESSION_START.md](SESSION_START.md)** — first-message protocol for new context windows.
