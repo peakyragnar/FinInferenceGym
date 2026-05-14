@@ -97,19 +97,19 @@ Every label row carries: `label_value`, `belief_id` link, `horizon`, `as_known`,
 
 ### Stone 3 — what "scoring a belief" means
 
-A scoring function has signature `score(belief, outcome) → number`. Both inputs required. Returns a single real number. By convention: **lower is better** (a loss). Zero would be perfect; positive is some amount of wrongness.
+A scoring function has signature `score(belief, label) → number`. Both inputs required. Returns a single real number. By convention: **lower is better** (a loss). Zero would be perfect; positive is some amount of wrongness.
 
-Three required properties:
+Three required properties — each prevents a specific failure mode:
 
-- **Deterministic.** Same belief + same outcome → same number, every time. A noisy scorer would jitter agent rankings and hide skill below the noise floor.
-- **Pure.** No external state read or written. An impure scorer is a vector for silent bias-import that the mechanism layer cannot catch in code.
-- **Lives on the verification side.** The agent never imports or calls the scoring function on its own work (DESIGN.md #5). Once agents exist, `src/fingym/agents/` will be structurally forbidden from importing `src/fingym/evaluator/` via import-linter.
+- **Deterministic.** Same belief + same label → same number, every time. A noisy scorer would jitter agent rankings and hide skill below the noise floor; you couldn't tell two analysts apart whose skill gap is below the scorer's noise. The scoring layer must be silent on uncertainty so all observed uncertainty is the agent's.
+- **Pure.** No external state read or written. An impure scorer (e.g., one that reads a hidden "regime multiplier") is a vector for silent bias-import: someone can change the dependency and retroactively shift every agent's grade, and the mechanism layer can't catch what's not in the function's source.
+- **Lives on the verification side.** The agent never imports or calls the scoring function on its own work (DESIGN.md #5). If it could, it would optimize directly against the metric, silently revise beliefs that would score badly, or — worst case — read the label and emit a perfect belief. Once agents exist, `src/fingym/agents/` will be structurally forbidden from importing `src/fingym/evaluator/` via import-linter.
 
-**Why one number per row.** Every aggregation the evaluator does — mean across calls (agent's grade), bucketing by claimed confidence (calibration curve), per-horizon / per-expression slicing, agent comparisons — requires a single comparable number per `(belief, outcome)` row.
+**Why one number per row.** Every aggregation the evaluator does — mean across calls (agent's grade), bucketing by claimed confidence (calibration curve), per-horizon / per-expression slicing, agent comparisons — requires a single comparable number per `(belief, label)` row.
 
-**Scoreboard reconciliation.** DESIGN.md "scoreboard, not scalar" means *multiple* scoring functions in parallel — each obeys this signature individually; the scoreboard is the vector across functions per row, then aggregated per column.
+**Scoreboard reconciliation.** DESIGN.md "scoreboard, not scalar" means *multiple* scoring functions in parallel (Brier + log score + calibration error + decision-quality + ...). Each obeys this Stone 3 signature individually; the scoreboard is the vector across functions per row, then aggregated per column. Diversity across columns is what catches failure modes any single number would miss.
 
-In the code: `brier(belief, outcome) -> float` and `log_score(belief, outcome) -> float` in `src/fingym/evaluator/scoring.py` are concrete instances of this signature. Stones 6 and 7 will explain *why those specific formulas.*
+In the code: `brier[H](belief: dict[H, float], outcome: H) -> float` and `log_score[H](belief: dict[H, float], outcome: H) -> float` in `src/fingym/evaluator/scoring.py` are concrete instances of this signature. The parameter is called `outcome` in current code; it carries the `label_value` from a label row. Stones 6 and 7 will explain *why those specific formulas.*
 
 ### Stones upcoming in this layer
 
