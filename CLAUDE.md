@@ -21,6 +21,7 @@ For project ethos, see [AGENTS.md](AGENTS.md). For architectural commitments, se
 - **[BUILD.md](BUILD.md)** — 12-week execution plan with teaching, build, design cross-reference, exit criteria, and slippage watches per phase.
 - **[PROGRESS.md](PROGRESS.md)** — current phase status, checklist, next action. **Source of truth for "where are we right now."** Updated at the end of every working session.
 - **[PYRAMID.md](PYRAMID.md)** — running teaching state. Each conceptual stone of the build is taught here in plain language **before** the code lands. Load alongside PROGRESS.md to see *what's been explained* in addition to *where we are*. Auditability requires it.
+- **[memory-design.md](memory-design.md)** — committed memory architecture (four-tier L0-L3 pyramid, promotion gate, git-backed YAML), the deferral list with revisit triggers, and the research evaluated. Source of truth for everything memory-related; expansion of TECHNICAL.md's memory section.
 - **[DECISIONS.md](DECISIONS.md)** — log of alternatives proposed and rejected. Do not re-litigate.
 - **[BIAS_PATTERNS.md](BIAS_PATTERNS.md)** — specific bias-smuggling patterns to challenge aggressively when they reappear.
 - **[AGENTS.md](AGENTS.md)** — minimal pointer file (for non-Claude agents). Just routes to CLAUDE.md.
@@ -41,9 +42,10 @@ When starting a new session (new context window), before producing any non-trivi
 3. Read **[BUILD.md](BUILD.md)** in full. Phase plan and slippage watches.
 4. Read **[PROGRESS.md](PROGRESS.md)**. This is the source of truth for current phase.
 5. Read **[PYRAMID.md](PYRAMID.md)** in full. This is the running teaching state — what's been explained to Michael in plain language so far, and what the next conceptual stone is. The build cadence is concept-in-PYRAMID-then-code; do not skip ahead.
-6. Read **[DECISIONS.md](DECISIONS.md)** in full. Rejected alternatives.
-7. Read **[BIAS_PATTERNS.md](BIAS_PATTERNS.md)** in full. Named failure modes to challenge.
-8. Re-read the slippage watches for the current phase in BUILD.md.
+6. Read **[memory-design.md](memory-design.md)** in full. The committed memory architecture, the deferral list, and the research evaluated. Substantive — do not skip even if the current substep is not memory-specific, because memory decisions constrain agent design upstream.
+7. Read **[DECISIONS.md](DECISIONS.md)** in full. Rejected alternatives.
+8. Read **[BIAS_PATTERNS.md](BIAS_PATTERNS.md)** in full. Named failure modes to challenge.
+9. Re-read the slippage watches for the current phase in BUILD.md.
 
 Then summarize back: 10 commitments, current phase + next action, slippage watches, 3 most relevant DECISIONS.md / BIAS_PATTERNS.md entries. Do not propose, plan, or expand scope until Michael confirms the summary is accurate.
 

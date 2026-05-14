@@ -44,7 +44,7 @@ Plus operational tables:
 - `vendor_imports` (raw ingest log)
 - `promotion_log` (skill promotion / rejection history)
 
-Memory artifacts live as **YAML files in `memory_registry/` in git** — versioned via git for audit history, not in Postgres. This is deliberate: skill provenance and human review benefit from git's diff/blame history.
+Memory artifacts live as **YAML files in `memory_registry/` in git** — versioned via git for audit history, not in Postgres. This is deliberate: skill provenance and human review benefit from git's diff/blame history. The full memory architecture (four-tier L0-L3 pyramid, schema, promotion gate, deferral list, and the research that produced it) is documented in **[memory-design.md](memory-design.md)**. This section gives only the engineering pointers; the architectural decisions live there.
 
 ## LLM swap layer
 

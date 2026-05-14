@@ -144,6 +144,19 @@ Every entry: **what was proposed → why rejected → principle / commitment inv
 
 ---
 
+## Memory architecture deliberations
+
+### Memory architecture v1 (2026-05) — committed to lean MVP
+
+- **Context**: substantive evaluation of 2026 LLM-agent-memory research (Kumiho graph-native belief revision, SSGM governance middleware, MemMachine ground-truth-preserving, Tencent four-tier pyramid, GBrain self-wiring knowledge graph, Claude Code two-tier auto-memory, Hermes, Codex thread-scoped DB, Sakana doc-to-LoRA, AtomicStrata wiki-compiler, Yegge/Tan thin-harness-fat-skills, ArcticDB hedge-fund research database) before committing to substep 7 (memory schema design).
+- **Decision**: Lean MVP — four-tier semantic pyramid (L0 Trajectory / L1 Observation / L2 Probationary Hypothesis / L3 Promoted Skill), git-backed YAML at L2/L3 with two edge types (`derived_from`, `supersedes`), four-check promotion gate (existing DESIGN.md), L0/L1 in Postgres tables, code-level boundary enforcement (`src/fingym/agents/` cannot import from `src/fingym/evaluator/`).
+- **Deferred (with revisit triggers)**: NLI contradiction check at promotion, `depends_on` and `contradicts` edges, reversible-reconciliation cron, continuous per-use confidence scoring, capped index file, Postgres edge index, skill-as-markdown procedures, read-only vector retrieval over L0. Each item carries an explicit trigger in [memory-design.md](memory-design.md) deferral table.
+- **Rejected outright**: vector retrieval over agent-writable stores (FMP defense, DESIGN.md #6); Neo4j or other graph DB (overkill at our scale); Sakana hypernetwork parametric memory (auditability over speed); flat append-only memory (UMG); recency-only eviction; agno ops platform at MVP; wiki-compiled corpus as primary input (would violate DESIGN.md #6 — runs as Phase 1 A/B experiment instead).
+- **Principle**: DESIGN.md #4 (verified updates), #5 (cognition/verification boundary), #6 (raw evidence), #7 (model-agnostic memory), plus the project's "no scaffolding" and BIAS_PATTERNS #10 (scope expansion without reason) — build the smallest architecture that honors DESIGN.md, add complexity only when triggered.
+- **Authoritative spec**: [memory-design.md](memory-design.md). This DECISIONS.md entry is the audit record; memory-design.md is the architecture document.
+
+---
+
 ## Disposition guidance
 
 When a new session encounters a proposal that matches anything in this file:
