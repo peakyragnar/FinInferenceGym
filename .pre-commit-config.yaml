@@ -4,7 +4,15 @@
 # "enforce quality with mechanisms, not prompts."
 #
 # Each hook references the DESIGN.md commitment it enforces.
-# See TECHNICAL.md "Mechanism layer" and mechanisms/README.md.
+# See TECHNICAL.md and mechanisms/README.md.
+#
+# Additional hooks (validate_schemas, validate_memory_artifacts,
+# check_alembic_migration, progress_md_warn, import-linter) are
+# planned and described in TECHNICAL.md / mechanisms/README.md but
+# are not yet wired here — they require code (pydantic models,
+# memory schema, alembic, src/fingym/) that gets built in Phase 0.
+# Activate them by uncommenting and ensuring the referenced script
+# exists.
 
 default_install_hook_types: [pre-commit, commit-msg]
 
@@ -35,19 +43,23 @@ repos:
         args: ["--fix"]
       - id: ruff-format
 
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.11.0
-    hooks:
-      - id: mypy
-        args: ["--strict"]
-        additional_dependencies:
-          - pydantic
-          - sqlmodel
+  # mypy is enabled only after src/fingym/ exists and a pyproject.toml
+  # is in place. Phase 0 Week 1 turns this on.
+  # - repo: https://github.com/pre-commit/mirrors-mypy
+  #   rev: v1.11.0
+  #   hooks:
+  #     - id: mypy
+  #       args: ["--strict"]
+  #       additional_dependencies:
+  #         - pydantic
+  #         - sqlmodel
 
-  - repo: https://github.com/seddonym/import-linter
-    rev: v2.0
-    hooks:
-      - id: import-linter
+  # import-linter is enabled after src/fingym/ exists and
+  # importlinter.toml defines the architectural boundaries.
+  # - repo: https://github.com/seddonym/import-linter
+  #   rev: v2.0
+  #   hooks:
+  #     - id: import-linter
 
   - repo: local
     hooks:
@@ -67,41 +79,38 @@ repos:
         types: [python]
         exclude: ^(tests/|src/fingym/llm/|mechanisms/)
 
-      # Pydantic schema discipline.
-      - id: pydantic-schema-validate
-        name: pydantic schema validation
-        entry: python mechanisms/lints/validate_schemas.py
-        language: system
-        pass_filenames: false
-        files: ^src/fingym/.*\.py$
-
-      # Memory artifact discipline (DESIGN.md Layer 4).
-      - id: memory-artifact-validate
-        name: memory artifact YAML validation
-        entry: python mechanisms/lints/validate_memory_artifacts.py
-        language: system
-        files: ^memory_registry/.*\.ya?ml$
-
-      # Schema/migration parity.
-      - id: alembic-migration-check
-        name: alembic migration present if schema changed
-        entry: python mechanisms/lints/check_alembic_migration.py
-        language: system
-        pass_filenames: false
-
-      # Math invariants must not regress (smoke subset).
-      - id: property-tests-smoke
-        name: property tests (smoke subset)
-        entry: pytest -m smoke -q
-        language: system
-        pass_filenames: false
-        stages: [pre-push]
-
-      # PROGRESS.md staleness warning (non-blocking).
-      - id: progress-md-warn
-        name: warn if PROGRESS.md unchanged after phase deliverable edits
-        entry: python mechanisms/lints/progress_md_warn.py
-        language: system
-        pass_filenames: false
-        verbose: true
-        stages: [commit-msg]
+      # The following are described in TECHNICAL.md and queued for Phase 0.
+      # Uncomment as each is implemented and its referenced lint exists.
+      #
+      # - id: pydantic-schema-validate
+      #   name: pydantic schema validation
+      #   entry: python mechanisms/lints/validate_schemas.py
+      #   language: system
+      #   pass_filenames: false
+      #
+      # - id: memory-artifact-validate
+      #   name: memory artifact YAML validation
+      #   entry: python mechanisms/lints/validate_memory_artifacts.py
+      #   language: system
+      #   files: ^memory_registry/.*\.ya?ml$
+      #
+      # - id: alembic-migration-check
+      #   name: alembic migration present if schema changed
+      #   entry: python mechanisms/lints/check_alembic_migration.py
+      #   language: system
+      #   pass_filenames: false
+      #
+      # - id: property-tests-smoke
+      #   name: property tests (smoke subset)
+      #   entry: pytest -m smoke -q
+      #   language: system
+      #   pass_filenames: false
+      #   stages: [pre-push]
+      #
+      # - id: progress-md-warn
+      #   name: warn if PROGRESS.md unchanged after phase deliverable edits
+      #   entry: python mechanisms/lints/progress_md_warn.py
+      #   language: system
+      #   pass_filenames: false
+      #   verbose: true
+      #   stages: [commit-msg]
