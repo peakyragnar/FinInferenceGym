@@ -127,11 +127,42 @@ The choice: grade the whole belief distribution, or grade just "did the agent pu
 
 **Steelman.** Outcomes are what compound. Calibration alone is academic; Kelly sizing alone is destructive (oversizes miscalibrated edges). It's calibration + fractional Kelly together that turn inference quality into compound returns. We grade the cause (calibration); compounding turns it into the consequence (log-wealth growth).
 
+### Stone 5 — what makes a scoring rule "proper"
+
+Belief-grading alone isn't enough: some belief-graders still reward bluffing (e.g., linear scoring `S = −belief[outcome]`). The subset of belief-graders that doesn't is called **proper**.
+
+**Proper property.** A scoring rule is proper if, for any true belief `q`, the agent's expected loss is **uniquely minimized by reporting `r = q`**. Honest reporting is the dominant strategy. The rule literally shapes what the agent learns to do.
+
+**Shape difference — visible in a spreadsheet.** Plot expected loss vs reported `r` while holding the true probability `q` fixed:
+
+- **Linear** (improper): straight downhill line. Optimum at the extreme (`r → 1`). Rewards bluffing.
+- **Brier** (proper): U-shaped valley with minimum at `r = q`.
+- **Log score** (proper): U-shaped valley with minimum at `r = q`, steeper walls at the extremes.
+
+The U-shape exists because Brier and log score punish confident-wrong **disproportionately** to the reward for confident-right. Above `r = q`, the marginal cost of going more extreme outpaces the marginal gain.
+
+**Why the squaring/log shapes specifically:**
+- **Brier** = `Σ_h (belief[h] − 1[h==outcome])²`. The square is what asymmetrically punishes confident-wrong vs rewards confident-right.
+- **Log score** = `−ln(belief[outcome])`. The log is what makes the punishment grow without bound as the probability on the truth approaches zero.
+
+**Brier vs log score — different shapes of punishment:**
+- **Brier**: bounded. Max loss ≈ 2 for binary. Confident-wrong tops out around 1.96 — doesn't explode.
+- **Log score**: unbounded. Approaches `+∞` as probability on the truth approaches 0.
+
+**Cromwell and near-Cromwell.** Cromwell's rule: never assign probability exactly 0 to anything not logically certain. Bayesian updating multiplies prior × likelihood; if the prior is 0, the posterior is 0 forever — the hypothesis is unrecoverably ruled out. A **Cromwell failure** is assigning `p = 0` on the truth. A **near-Cromwell failure** is the same shape with very-small-but-nonzero probability (e.g., `p = 0.001`): log score = 6.91; Brier = 1.996. **Log score is the smoke alarm; Brier shrugs.** The Asymmetry of Ruin (intuitions.md #12) makes near-Cromwell structurally dangerous once positions are sized.
+
+**Why both on the scoreboard.** Brier averages politely across many calls (catches general miscalibration). Log score screams at one bad row (catches near-Cromwell). An agent's mean Brier can look fine while one near-Cromwell row pulls the mean log score visibly upward — flagging a hidden disaster the Brier average smoothed over. Running both means catching what either alone would miss.
+
+**Don't combine routinely.** Each scoring function is its own column on the scoreboard. Aggregations happen per column (mean Brier, mean log score, …). Composition into a single number happens **only at explicit decision points with declared rules** (e.g., "promote a memory item if Brier improves AND log score doesn't worsen"). Per DESIGN.md: scoreboard, not scalar. Routine collapse hides failure modes; explicit collapse at a decision point keeps the components visible.
+
 ### Stones upcoming in this layer
 
-- **Stone 5 — what makes a scoring rule "proper."** Not every belief-grader has the property that reporting your true belief minimizes expected loss. The mathematical condition that does.
-- **Stone 6 — the Brier score.** First canonical proper scoring rule. Derive properness.
-- **Stone 7 — the log score, and Cromwell's rule.** Second canonical proper scoring rule, and why `log_score = +∞` is a feature.
+Both canonical proper scoring rules (Brier, log score) are now conceptually understood AND already implemented in `src/fingym/evaluator/scoring.py` from substep 4a. Remaining stones in Layer 1:
+
+- **Stone 6 — Brier from the formula up.** Algebraic derivation of properness (the valley always lands at `r = q`), explicit link to the implemented code, edge cases.
+- **Stone 7 — log score from the formula up.** Same treatment, plus the explicit Cromwell mechanism (`log(0) = −∞` → `−log(0) = +∞`).
+
+Or — given Michael's grasp of the intuition is now solid — skip ahead to **the next layer (the evaluator's math: calibration curves, scoreboard assembly)** and treat Brier/log score's formula derivations as supporting detail to revisit if a failure mode surfaces. Michael's call.
 
 ---
 
