@@ -82,11 +82,66 @@ A few consequences worth noticing now, because they'll matter later:
 
 That table is the foundation. Everything else in the project is built on top of it.
 
+### Stone 2 — what an outcome is, and where time enters
+
+An **outcome** is the truth, revealed later.
+
+For the coin: after the agent has watched some number of flips and formed a belief, the truth in the box is revealed. The outcome is either `"fair"` or `"biased"` — one of the two hypotheses turns out to be the case.
+
+For a company: after the agent has read a quarter's transcripts and formed a belief about hidden state, time passes. The next-quarter revenue is reported, or the company guides down, or its market share shifts. Those later observations get used as labels. The outcome is what the world reveals at some later moment.
+
+Two characteristics matter:
+
+**(a) The outcome is exactly one hypothesis from the belief's hypothesis set.** Not a probability over hypotheses. Not a "kind of fair." Exactly one of `{fair, biased}` is the truth. (If the truth is "biased but barely," the hypothesis space was wrong — we'd have needed `{very_biased, slightly_biased, fair}`. Stone 4 returns to this.)
+
+**(b) The agent did not see it.** This is the load-bearing point. The belief was formed at time `t_belief`. The outcome is revealed at time `t_outcome > t_belief`. The asymmetry between those two information sets is what makes external evaluation real.
+
+#### Where time enters
+
+Until this stone, we could pretend the agent and the evaluator were operating on the same world at the same time. They are not. They are split by time.
+
+- **Agent's information set:** strictly what is knowable at `t_belief`.
+- **Evaluator's information set:** the agent's information PLUS the outcome revealed at `t_outcome`.
+
+The evaluator always knows more than the agent did. The agent can never know what the evaluator knows.
+
+**This asymmetry is the foundation of evaluation.** Without it:
+
+- The agent could trivially get a perfect score by reading the outcome.
+- "Evaluation" would mean nothing — anyone who saw the answer key first scores 100%.
+- The system could never distinguish a calibrated agent from a confident reward-hacker.
+
+Time is what makes the agent's belief have to be a *belief* and not a *lookup*. It is what makes calibration matter. It is what makes the evaluator load-bearing.
+
+#### What this implies for the engineering
+
+Two principles fall out of the asymmetry immediately:
+
+1. **Point-in-time discipline.** The system has to remember, for every fact, *when it was first knowable.* If a company restated last quarter's revenue today, the agent — when reasoning about a date before that restatement — must see the *original* number, not the restated one. The restated number is a future the agent could not yet see. Showing it would be a time leak. (DESIGN.md #3.)
+
+2. **Time-revealed labels only.** Outcomes are produced by the world later, not by anyone's judgment now. No human-labeled training data. No "Michael says this is the right answer." No narrative scoring. Only what the world reveals at `t_outcome`. (DESIGN.md #10 — Michael as auditor only — is downstream of this.)
+
+#### Worked example — the coin
+
+- `t=0`: belief = `{fair: 0.5, biased: 0.5}`.
+- `t=1`..`t=10`: agent observes flips, updates after each. At `t=10` its belief is, say, `{fair: 0.30, biased: 0.70}`.
+- `t=later`: the truth in the box is revealed. Outcome = `"biased"`.
+- The evaluator scores the `t=10` belief against the `t=later` outcome.
+
+At `t=10`, the agent did not know the outcome. Its 70% confidence in "biased" was inference from the first 10 flips, not lookup. The score grades that inference.
+
+#### Consequences worth noticing now
+
+- **The agent is never graded on luck.** A belief of `{fair: 0.50, biased: 0.50}` on a coin that turned out to be biased got the right side of the call but had no information advantage. We grade the *belief*, not the side.
+- **Future emissions are proxies for state, not the state itself.** In finance, no oracle ever announces "the company was actually decaying." We use proxies — next-quarter revenue, future earnings revisions, future market-share trends. Each proxy is itself a hypothesis about how state translates to emission. Stone 4 returns to why this matters.
+- **A leak of `t_outcome` info into the agent's `t_belief` info is catastrophic.** The whole project's honesty depends on time discipline. The Postgres schema we built in substep 2 (with `as_of` and `as_known` timestamps per record) is the mechanism that will enforce it once data lands.
+
+The shape of the layer is now visible: belief is what the agent emits at `t_belief`. Outcome is what the world reveals at `t_outcome > t_belief`. The score lives in the gap.
+
 ### Stones upcoming in this layer
 
 To be taught next, in this order:
 
-- **Stone 2 — what an outcome is.** And the critical fact that the agent never sees it at the moment it forms the belief. Time enters the picture here.
 - **Stone 3 — what "scoring a belief" means.** A function that takes a belief and an outcome and returns a number.
 - **Stone 4 — why we score the belief, not the outcome.** The single most important conceptual move in the project. The difference between a learning system and a guessing system.
 - **Stone 5 — what makes a scoring rule "proper."** The mathematical property that means honesty is the dominant strategy.
