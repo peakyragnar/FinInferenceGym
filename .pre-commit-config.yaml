@@ -1,0 +1,107 @@
+# Pre-commit hooks for FinInferenceGym.
+#
+# Mechanism layer per the harness-engineering principle:
+# "enforce quality with mechanisms, not prompts."
+#
+# Each hook references the DESIGN.md commitment it enforces.
+# See TECHNICAL.md "Mechanism layer" and mechanisms/README.md.
+
+default_install_hook_types: [pre-commit, commit-msg]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-added-large-files
+        args: ["--maxkb=5120"]
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: detect-private-key
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        exclude: ^(uv\.lock|.*\.lock\.json)$
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.0
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.0
+    hooks:
+      - id: mypy
+        args: ["--strict"]
+        additional_dependencies:
+          - pydantic
+          - sqlmodel
+
+  - repo: https://github.com/seddonym/import-linter
+    rev: v2.0
+    hooks:
+      - id: import-linter
+
+  - repo: local
+    hooks:
+      # DESIGN.md #10 — Michael is the auditor only.
+      - id: no-discretionary-references
+        name: no discretionary / michael references in production code
+        entry: python mechanisms/lints/no_discretionary_references.py
+        language: system
+        types: [python]
+        exclude: ^(tests/|mechanisms/)
+
+      # DESIGN.md #7 — Intelligence in architecture, not weights/prompts.
+      - id: no-hardcoded-models
+        name: no direct LLM SDK imports outside src/fingym/llm/
+        entry: python mechanisms/lints/no_hardcoded_models.py
+        language: system
+        types: [python]
+        exclude: ^(tests/|src/fingym/llm/|mechanisms/)
+
+      # Pydantic schema discipline.
+      - id: pydantic-schema-validate
+        name: pydantic schema validation
+        entry: python mechanisms/lints/validate_schemas.py
+        language: system
+        pass_filenames: false
+        files: ^src/fingym/.*\.py$
+
+      # Memory artifact discipline (DESIGN.md Layer 4).
+      - id: memory-artifact-validate
+        name: memory artifact YAML validation
+        entry: python mechanisms/lints/validate_memory_artifacts.py
+        language: system
+        files: ^memory_registry/.*\.ya?ml$
+
+      # Schema/migration parity.
+      - id: alembic-migration-check
+        name: alembic migration present if schema changed
+        entry: python mechanisms/lints/check_alembic_migration.py
+        language: system
+        pass_filenames: false
+
+      # Math invariants must not regress (smoke subset).
+      - id: property-tests-smoke
+        name: property tests (smoke subset)
+        entry: pytest -m smoke -q
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      # PROGRESS.md staleness warning (non-blocking).
+      - id: progress-md-warn
+        name: warn if PROGRESS.md unchanged after phase deliverable edits
+        entry: python mechanisms/lints/progress_md_warn.py
+        language: system
+        pass_filenames: false
+        verbose: true
+        stages: [commit-msg]

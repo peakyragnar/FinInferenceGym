@@ -1,0 +1,16 @@
+{
+  "_comment": "Claude Code hooks for FinInferenceGym. See mechanisms/README.md for what each hook enforces. Adding or removing hooks requires explicit deliberation per DESIGN.md change-control policy.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/mechanisms/hooks/post_write_format.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -38,7 +38,18 @@ See [BUILD.md](BUILD.md#phase-0--evaluator--model-interface-contract--toys-weeks
 
 ## Next Action
 
-Begin **Phase 0 Week 1**: build the evaluator v0 on the existing coin toy, then extend it to score multi-horizon, action-space-aware outputs. Validate against adversarial test agents.
+Phase 0 Week 1 substeps, in order:
+
+1. **Bootstrap engineering scaffolding.** `uv init`; pin Python 3.12; commit `pyproject.toml`; install pre-commit (`pre-commit install`) so the existing `.pre-commit-config.yaml` is active; verify `.claude/settings.json` PostToolUse hook fires (test by editing a `.py` file and confirming `ruff format` ran).
+2. **Set up Neon database.** Create Neon project, store connection string in local `.env`, run a smoke-test connection from Python. Configure alembic. **Do not commit `.env`.**
+3. **Migrate `toys/coin.py`** into `src/fingym/toys/coin.py` with full type hints under mypy strict.
+4. **Build the evaluator v0.** Scoreboard library in `src/fingym/evaluator/`: Brier, log score, calibration curve, process-quality flag, decision-quality score. Multi-horizon scoring (1m/3m/6m/1y plus shorter for toys). Action-space-aware tagging.
+5. **Build three adversarial test agents** (confidently-wrong, always-50%, well-calibrated) and verify the evaluator distinguishes them on every scoreboard dimension.
+6. **Define the model-interface contract** (`src/fingym/agents/interface.py`) as a typed Protocol — raw evidence in, structured terminal output out.
+7. **Define the memory artifact schema** (`src/fingym/memory/schema.py`) as a pydantic model; validate a sample artifact in `memory_registry/`.
+8. **Run property tests** (smoke subset) to confirm math invariants.
+
+Exit Phase 0 only when all checklist items above are ✅ and adversarial agents are correctly ordered on the scoreboard.
 
 ---
 

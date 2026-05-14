@@ -9,14 +9,16 @@ Project is FinInferenceGym. Before responding to anything else, read these files
 
   1. DESIGN.md
   2. CLAUDE.md
-  3. BUILD.md
-  4. PROGRESS.md
-  5. DECISIONS.md
-  6. AGENTS.md
-  7. DEFINITIONS.md
-  8. intuitions.md
+  3. TECHNICAL.md
+  4. BUILD.md
+  5. PROGRESS.md
+  6. DECISIONS.md
+  7. BIAS_PATTERNS.md
+  8. AGENTS.md
+  9. DEFINITIONS.md
+ 10. intuitions.md
 
-PROGRESS.md is the source of truth for current phase and status — read it for "where are we." BUILD.md is the operational source for "what does this phase require." AGENTS.md provides curriculum framing; it does not override BUILD.md on execution.
+PROGRESS.md is the source of truth for current phase and status. BUILD.md is the operational source for "what does this phase require." TECHNICAL.md is the engineering decisions (stack, database, mechanisms, deployment path). BIAS_PATTERNS.md is the named failure modes to challenge.
 
 Then summarize back to me:
 
@@ -24,6 +26,7 @@ Then summarize back to me:
   - The current build phase per PROGRESS.md, its exit criteria from BUILD.md, and the "Next Action" from PROGRESS.md.
   - The slippage watches for the current phase.
   - The three most relevant DECISIONS.md entries given the phase we're in.
+  - The three most relevant BIAS_PATTERNS.md entries to watch for in the current phase.
 
 Do not propose plans, expand scope, or produce design alternatives until you have done this and I have confirmed the summary is accurate.
 

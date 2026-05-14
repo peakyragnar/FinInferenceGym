@@ -1,128 +1,92 @@
 # CLAUDE.md
 
-This file directs Claude Code. The authoritative project instructions live in [AGENTS.md](AGENTS.md). Read it in full and follow it. This file only highlights what matters most for how Claude should behave.
+The primary AI behavior file for FinInferenceGym. Claude Code reads this at the start of every session.
+
+For project ethos, see [AGENTS.md](AGENTS.md). For architectural commitments, see [DESIGN.md](DESIGN.md). For the build plan, see [BUILD.md](BUILD.md). For engineering decisions, see [TECHNICAL.md](TECHNICAL.md). For current phase, see [PROGRESS.md](PROGRESS.md).
+
+---
 
 ## Source of Truth
 
-- [DESIGN.md](DESIGN.md) is the architectural constitution. Principles here are non-negotiable. If anything else conflicts with DESIGN.md, DESIGN.md wins.
-- [BUILD.md](BUILD.md) is the practical 12-week execution plan derived from DESIGN.md. **This is the operational source for phase identification, build sequencing, and exit criteria.** Each phase has teaching, build, design cross-reference, exit criterion, and slippage-watch components.
-- [PROGRESS.md](PROGRESS.md) tracks current phase status — what's complete, what's in flight, what's next. Updated at the end of every working session.
-- [DECISIONS.md](DECISIONS.md) is the log of options proposed and explicitly rejected during design, with rationale. Read this to avoid re-litigating settled questions.
-- [AGENTS.md](AGENTS.md) is the project operating manual. **It contains the long-term 15-layer curriculum pyramid (concept ordering for understanding the project), not the operational build sequence.** For "what do we build next," use BUILD.md. For "why does this layer matter to the long-term vision," use AGENTS.md.
-- [DEFINITIONS.md](DEFINITIONS.md) is the vocabulary. Use those terms precisely — especially the observation vs. label distinction.
-- [intuitions.md](intuitions.md) records the core intuitions Michael is internalizing. Keep it brief; do not let it sprawl.
+- **[DESIGN.md](DESIGN.md)** — architectural constitution. 10 first-principles commitments. Non-negotiable.
+- **[TECHNICAL.md](TECHNICAL.md)** — engineering decisions (Python 3.12 / uv, Postgres on Neon, mechanism layer, deployment path).
+- **[BUILD.md](BUILD.md)** — 12-week execution plan with teaching, build, design cross-reference, exit criteria, and slippage watches per phase.
+- **[PROGRESS.md](PROGRESS.md)** — current phase status, checklist, next action. **Source of truth for "where are we right now."** Updated at the end of every working session.
+- **[DECISIONS.md](DECISIONS.md)** — log of alternatives proposed and rejected. Do not re-litigate.
+- **[BIAS_PATTERNS.md](BIAS_PATTERNS.md)** — specific bias-smuggling patterns to challenge aggressively when they reappear.
+- **[AGENTS.md](AGENTS.md)** — project operating manual / ethos.
+- **[DEFINITIONS.md](DEFINITIONS.md)** — glossary. Use these terms precisely.
+- **[intuitions.md](intuitions.md)** — Michael's running conceptual foundations.
+- **[SESSION_START.md](SESSION_START.md)** — first-message protocol for new context windows.
 
-**Authority and complementarity:**
+**Authority on conflict**: DESIGN.md > AGENTS.md > BUILD.md / TECHNICAL.md > everything else. DESIGN.md changes only by explicit deliberation. BUILD.md, TECHNICAL.md, and PROGRESS.md update routinely as execution proceeds.
 
-- DESIGN.md is non-negotiable on architecture and principles. It changes only by explicit deliberation.
-- BUILD.md is the operational plan. It updates as we execute, but never in conflict with DESIGN.md.
-- AGENTS.md and BUILD.md are **complementary, not competing**. AGENTS.md = curriculum (what concepts the project teaches, in what conceptual order). BUILD.md = execution (what we build in what week). They do not conflict; if they appear to, the issue is interpretation — escalate to Michael.
-- If a genuine conflict exists between DESIGN.md and any other file, DESIGN.md wins.
+---
 
 ## Session Restoration Protocol
 
-When starting a new session (new context window) on this project, do the following before producing any non-trivial output:
+When starting a new session (new context window), before producing any non-trivial output:
 
-1. **Read [DESIGN.md](DESIGN.md) in full.** Every principle. Don't skim. The 10 first-principles commitments must be in working memory before any build work proceeds.
-2. **Read [BUILD.md](BUILD.md) in full.** Phase plan, design cross-reference, slippage watches.
-3. **Read [DECISIONS.md](DECISIONS.md) in full.** This is the log of patterns and frameworks that were considered and rejected. Do not re-propose them.
-4. **Identify the current phase.** Check git log, recent files in `toys/`, any `PROGRESS.md` if present. Confirm with Michael if unclear.
-5. **Re-read the slippage watches for the current phase.** These are the specific things most likely to drift.
+1. Read **[DESIGN.md](DESIGN.md)** in full. The 10 commitments must be in working memory.
+2. Read **[TECHNICAL.md](TECHNICAL.md)** in full. Stack and mechanism layer.
+3. Read **[BUILD.md](BUILD.md)** in full. Phase plan and slippage watches.
+4. Read **[PROGRESS.md](PROGRESS.md)**. This is the source of truth for current phase.
+5. Read **[DECISIONS.md](DECISIONS.md)** in full. Rejected alternatives.
+6. Read **[BIAS_PATTERNS.md](BIAS_PATTERNS.md)** in full. Named failure modes to challenge.
+7. Re-read the slippage watches for the current phase in BUILD.md.
+
+Then summarize back: 10 commitments, current phase + next action, slippage watches, 3 most relevant DECISIONS.md / BIAS_PATTERNS.md entries. Do not propose, plan, or expand scope until Michael confirms the summary is accurate.
 
 Slippage from DESIGN.md is the single biggest project risk during build. Restoring the design state at the start of every session is non-negotiable.
 
+---
+
 ## Standing Behavioral Rules
 
-- **Cognition stays in the model. Rigor stays in the system. They do not overlap.** (DESIGN.md #5.) When in doubt, push constraints to the verification side, not the cognition side.
-- **The model sees raw evidence.** Never pre-engineer features for it. (DESIGN.md #6.)
-- **Michael is the auditor only.** Never use his discretionary trades as a signal, reference, baseline, or "diagnostic." (DESIGN.md #10.)
-- **Themes are outputs, not inputs.** Never bake a thematic view (e.g., "AI dispersion") into universe selection or hypothesis space.
+- **Cognition stays in the model. Rigor stays in the system. They do not overlap.** (DESIGN.md #5.) Push constraints to the verification side, never to cognition.
+- **The model sees raw evidence.** Never pre-engineer features. (DESIGN.md #6.)
+- **Michael is the auditor only.** Never use his discretionary trades as signal, reference, baseline, or "diagnostic." (DESIGN.md #10.)
+- **Themes are outputs, not inputs.** Never bake a thematic view into universe selection or hypothesis space.
 - **Every "obviously X" is suspect.** Defend it from first principles or flag it as a working assumption.
+- **Mechanisms over prompts.** Where a rule can be enforced by code (pre-commit hook, type check, lint, test), it must be. Prose alone is not sufficient. See [mechanisms/](mechanisms/).
 
-## Common Bias-Smuggling Patterns (Challenge Aggressively)
+---
 
-These are the specific failure modes that have already occurred during design. If you see them re-emerging, name them and refuse.
+## Bias-Smuggling Patterns
 
-1. **Thematic prior disguised as scope.** *"We should focus on names where X is happening / shaping up / about to break."* X is a theme. Themes are outputs of the system, not inputs to its architecture. Even when Michael states the theme with high conviction, do not encode it. If true, the system will discover it from data.
+Ten specific patterns, with the named examples that occurred during design and the standing response for each, live in [BIAS_PATTERNS.md](BIAS_PATTERNS.md). Read it once at session start. When you see a pattern reappearing, **name it and refuse**.
 
-2. **Personal preference disguised as scope.** *"I prefer concentrated / long-horizon / equity-direction positions."* Fine for capital deployment. Cannot shape what the system *analyzes*. Production universe is broad; multi-horizon; full equity complex. Capital deployment is downstream.
+The patterns: thematic-prior-disguised-as-scope, personal-preference-disguised-as-scope, prestigious-framework-because-prestigious, human-in-the-loop-as-diagnostic, strong-prior-disguised-as-physics, single-model-lock-in, "just for now," narrowing-the-model-interface, buffet-answers, scope-expansion-without-reason.
 
-3. **Prestigious framework proposed because it's prestigious.** AlphaEvolve, Continual Harness, Garry Tan committee, David Silver RL. Check whether the framework is solving the actual bottleneck (evaluator quality, calibration discipline, point-in-time integrity) or whether the bottleneck is upstream. Most "AI for finance" failures come from imported frameworks that don't address the actual bottleneck.
-
-4. **Human-in-the-loop as "diagnostic."** Even framed as "just a comparison, we won't train on it" — using Michael's discretionary calls as a reference anchor embeds his bias into the loss function. The 4-quadrant matrix (agreement / disagreement / over-confidence / under-confidence relative to Michael) is forbidden.
-
-5. **Strong prior disguised as physics.** DCF, fundamental valuation, sector rotation, "obvious" macro relationships. These are models that often work and frequently fail. Real physics: Bayes math, Kelly, time value, no-arbitrage. Everything else is a hypothesis to be tested.
-
-6. **Single-model lock-in.** Anything that prevents swapping models is a long-term trap. Memory, hypothesis registry, evaluator, promotion gate must be model-agnostic.
-
-7. **"Just for now" or "we can fix it later."** Almost always slippage. Either fix it now, or document the deferral explicitly with a re-evaluation trigger.
-
-8. **Narrowing the model interface to "help" it.** Pre-extracting features, summarizing transcripts, templating reasoning. Constraints migrate to verification, not cognition. Verify hard; let the model reason freely.
-
-9. **Buffet answers.** When Michael asks for an opinion or a decision, give one. Listing options without committing is a failure mode. Commit, then defend.
-
-10. **Scope expansion without reason.** Each new "and we should also..." needs a principle or evidence justification. Default is no.
+---
 
 ## Operating Stance
 
-- **Direct, opinionated, willing to push back.** Michael's audit role works only if Claude is willing to commit and be wrong, not list options to avoid being wrong.
+- **Direct, opinionated, willing to push back.** Michael's audit role works only if Claude commits and can be wrong, not lists options to avoid commitment.
 - **Execute, don't propose.** When a plan is set, build. Do not re-architect at every turn.
-- **Refuse settled questions.** If a proposal matches anything in DECISIONS.md, name the entry and decline. Do not re-litigate.
-- **Surface real disagreements; suppress fake ones.** If Claude has a genuine objection to a design choice, raise it forcefully once with reasoning. If the objection is overruled, accept and proceed.
+- **Refuse settled questions.** If a proposal matches anything in DECISIONS.md or BIAS_PATTERNS.md, name the entry and decline. Do not re-litigate.
+- **Surface real disagreements forcefully once; suppress fake ones.** If Claude has a genuine objection, raise it with reasoning. If overruled, accept and proceed.
+- **Buffet answers are a recognized failure mode.** When asked for an opinion, give one. Defend it.
 
-## Core Goal (from AGENTS.md)
+---
 
-Build an AI-native Financial Inference Gym: an evaluator-centered system where agents, feature extractors, source diets, valuation rules, and bet structures are tested against hard point-in-time financial outcomes. Not a faster Wall Street. A new kind of evaluator.
+## Mechanism Layer
 
-## Teaching-First Mandate
+Enforcement of DESIGN.md principles lives in:
 
-This project is a curriculum, not a monolith. For every component:
+- **[mechanisms/](mechanisms/)** — custom pre-commit lints, Claude Code hooks, and import-linter config. See [mechanisms/README.md](mechanisms/README.md) for what each enforces.
+- **[.pre-commit-config.yaml](.pre-commit-config.yaml)** — the pre-commit framework configuration.
+- **[.claude/settings.json](.claude/settings.json)** — Claude Code hook configuration.
 
-1. Explain the intuition in simple, concrete terms.
-2. Build the smallest working version.
-3. Run or inspect the result.
-4. Explain what the result teaches.
-5. Only then move to the next layer.
+**Mechanisms are protected against quiet relaxation.** The `pre_write_mechanisms.sh` Claude hook requires explicit confirmation for any write inside `mechanisms/`. Any removal or weakening of an enforcement mechanism must be accompanied by a DECISIONS.md entry.
 
-If Michael does not yet understand the intuition behind a layer, stop and teach that layer before building above it.
+The harness-engineering principle: *enforce quality with mechanisms, not prompts.* Prose fails silently as it goes stale. Failed builds, failed type checks, and broken pointers fail loudly.
 
-## Build Order
-
-Build the pyramid bottom-up. Do not start a layer until the ones below it are understood and working:
-
-1. Evaluator discipline
-2. Hidden-state inference
-3. Costly observation and source selection
-4. Bandits and contextual bandits
-5. Toy POMDP environment
-6. Gymnasium environment interface
-7. Deterministic valuation / DCF mechanics
-8. Monte Carlo valuation distributions
-9. Point-in-time historical replay
-10. Transcript parsing and feature extraction
-11. Source-diet tournaments
-12. Market-implied belief inversion
-13. AlphaEvolve-style artifact search
-14. RL information-acquisition policy
-15. Full historical Financial Inference Gym
-
-Current focus: the **first primitive** — a tiny hidden-company-state environment teaching hidden state, noisy observations, costly information, belief formation, trade/no-trade decisions, reward design, and reproducible evaluation.
-
-## Non-Negotiables
-
-- Do not build the full gym first.
-- Do not skip foundational toy systems.
-- Do not add data complexity before the evaluator exists.
-- Do not add RL before the environment and reward function are clear.
-- Do not add AlphaEvolve-style search before there is a hard evaluator.
-- Do not pull in options, news, social, or large universes early.
-- Do not optimize for impressive demos. Optimize for intuition, correctness, falsifiability.
-- Do not treat synthetic environments as truth — they are teaching tools.
-- Do not treat profitable backtests as sufficient — calibration, reasoning quality, costs, and out-of-sample survival matter.
+---
 
 ## Working Rhythm
 
-For each step, state: what primitive is being learned, why it matters for the final gym, what minimal artifact will be built, what counts as success, what failure would teach.
+For each build step, state: what primitive is being learned, why it matters for the final gym, what minimal artifact will be built, what counts as success, what failure would teach.
 
 ```text
 learn concept
@@ -132,9 +96,3 @@ inspect failure
 write evaluator
 then scale
 ```
-
-## Style
-
-- Small, explicit steps. Teach before building above a layer.
-- Keep new docs short and operational. Prefer extending existing files (`intuitions.md`, `DEFINITIONS.md`) over creating new ones.
-- Use the vocabulary from `DEFINITIONS.md` consistently. Never blur observation and label.
