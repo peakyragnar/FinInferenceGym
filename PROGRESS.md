@@ -18,14 +18,22 @@ See [BUILD.md](BUILD.md#phase-0--evaluator--model-interface-contract--toys-weeks
 
 | Deliverable | Status |
 |---|---|
-| `toys/coin.py` — minimal Bayesian belief-revision toy | ✅ Complete |
-| 3-state synthetic company toy | ⬜ Not started |
-| Evaluator v0 (scoreboard library: Brier, log score, calibration curve, process-quality flag, decision-quality, capacity-adjusted return) | ⬜ Not started |
-| Multi-horizon scoring built into evaluator (1m / 3m / 6m / 1y, plus shorter for toys) | ⬜ Not started |
-| Action-space-aware scoring (expression_type tagging: equity-long / -short / option-* / vol-* / pair / no-edge) | ⬜ Not started |
-| Adversarial test agents (confidently-wrong, always-50%, well-calibrated) | ⬜ Not started |
-| Model interface contract (typed I/O — raw evidence in, structured terminal output) | ⬜ Not started |
-| Memory artifact schema (versioned, model-readable, horizon-tagged, expression-type-tagged) | ⬜ Not started |
+| Repo skeleton (`src/fingym/` packages, `tests/` tree, `config/`, `memory_registry/`) | ✅ Scaffolded |
+| Stub config files (`config/universe.yaml`, `config/vendors.yaml`, `config/agents/baseline.yaml`) | ✅ Scaffolded |
+| `README.md` at root | ✅ Present |
+| `toys/coin.py` — minimal Bayesian belief-revision toy (at repo root) | ✅ Present (migration to `src/fingym/toys/coin.py` is substep 3) |
+| `pyproject.toml` via `uv init`, ruff + mypy strict + pytest configured | ⬜ Not started (substep 1) |
+| Pre-commit installed and verified | ⬜ Not started (substep 1) |
+| Neon database connected; `.env` populated; alembic initialized | ⬜ Not started (substep 2) |
+| `toys/coin.py` migrated to `src/fingym/toys/coin.py` with full type hints | ⬜ Not started (substep 3) |
+| Evaluator v0 (scoreboard library: Brier, log score, calibration curve, process-quality flag, decision-quality, capacity-adjusted return) | ⬜ Not started (substep 4) |
+| Multi-horizon scoring built into evaluator (1m / 3m / 6m / 1y, plus shorter for toys) | ⬜ Not started (substep 4) |
+| Action-space-aware scoring (expression_type tagging: equity-long / -short / option-* / vol-* / pair / no-edge) | ⬜ Not started (substep 4) |
+| 3-state synthetic company toy | ⬜ Not started (substep 4) |
+| Adversarial test agents (confidently-wrong, always-50%, well-calibrated) | ⬜ Not started (substep 5) |
+| Model interface contract (typed I/O — raw evidence in, structured terminal output) | ⬜ Not started (substep 6) |
+| Memory artifact schema (versioned, model-readable, horizon-tagged, expression-type-tagged) | ⬜ Not started (substep 7) |
+| Property tests smoke subset green | ⬜ Not started (substep 8) |
 
 ## Phase 0 Exit Criteria (from BUILD.md)
 

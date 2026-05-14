@@ -1,0 +1,40 @@
+# Universe configuration for FinInferenceGym.
+#
+# Three tiers per BUILD.md "Universe (stratified)":
+#   - learning: ~30 names used for Phase 0-2 evaluator validation only.
+#   - production_analytical: ~1700+ names. Full transcript corpus +
+#     delisted shadow universe. The system forms beliefs on all of these.
+#   - active_capital: emergent — the subset where calibrated edge ×
+#     capacity × Kelly justifies action. Not configured here.
+#
+# Selection is by operational and structural criteria only (DESIGN.md
+# "Operational Constraints"). Never by sector, theme, or thematic view.
+
+tiers:
+  learning:
+    # Populate in Phase 1 after corpus QA. ~30 names, sector-diverse,
+    # rich PIT data, clean transcripts.
+    names: []
+
+  production_analytical:
+    # Populated programmatically from the transcript corpus + delisted
+    # shadow universe after Phase 1 ingestion.
+    source: transcript_corpus_plus_delisted_shadow
+    names: []  # populated by ingest, not by hand
+
+  delisted_shadow:
+    # Norgate-sourced delisted names; counters survivorship bias of the
+    # transcript corpus.
+    source: norgate_delisted
+    names: []
+
+selection_criteria:
+  operational:
+    pit_depth_min_years: 10
+    requires_clean_transcripts: true
+    requires_fundamentals_history: true
+  structural:
+    liquidity_min_avg_daily_dollar_volume: 100000
+    requires_options_market: false  # required only for active_capital deployment
+    excludes_recent_spac: true
+    excludes_recent_ipo_days: 365

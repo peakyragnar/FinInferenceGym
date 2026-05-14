@@ -1,0 +1,36 @@
+# Baseline agent configurations.
+#
+# Two starting agents in Phase 2 (per BUILD.md):
+#   - pure_code: plumbing-validation baseline only. Hand-coded
+#     likelihoods on the learning universe. Outputs discarded after
+#     pipeline verification.
+#   - model_driven: production agent shape. Sees raw evidence,
+#     reasons natively, structured terminal output.
+#
+# Add population variants in Phase 4 by adding entries with
+# different (model × memory_subset × prompt × reasoning_approach).
+
+agents:
+  pure_code_plumbing:
+    type: pure_code
+    universe_tier: learning
+    horizons: [1m, 3m, 6m, 1y]
+    description: >
+      Hand-coded Bayesian agent used ONLY to verify the data spine +
+      evaluator + market-implied belief pipeline are correctly wired.
+      Its hand-coded heuristics are NEVER promoted into the model agent.
+
+  model_driven_v0:
+    type: model_driven
+    universe_tier: production_analytical
+    horizons: [1m, 3m, 6m, 1y]
+    model:
+      # Model swap is config-only; the agent code is identical regardless.
+      provider: anthropic
+      model_name: claude-sonnet-4-5  # or whichever current default
+    memory_subset: all_promoted
+    description: >
+      First model-driven agent. Receives raw evidence from the
+      raw-evidence channel, reasons natively, produces structured
+      terminal output (belief + recommended expression + sizing +
+      horizon-of-edge + uncertainty + proposed memory updates).

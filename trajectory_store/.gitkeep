@@ -1,0 +1,5 @@
+# Trajectory store
+
+Append-only logs of every belief, action, outcome, score with full provenance. Gitignored (too large for git; replayable from Postgres anyway).
+
+This file exists only to ensure the directory is present after a fresh clone.

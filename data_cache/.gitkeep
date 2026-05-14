@@ -1,0 +1,5 @@
+# Local data cache
+
+Gitignored. Vendor downloads, transcript files, intermediate Parquet snapshots.
+
+This file exists only to ensure the directory is present after a fresh clone.

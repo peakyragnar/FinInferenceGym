@@ -4,9 +4,12 @@
 *.pem
 *.key
 
-# Trajectory store and data cache — too large for git
-trajectory_store/
-data_cache/
+# Trajectory store and data cache — too large for git, but keep the
+# directory present after clone via .gitkeep.
+trajectory_store/*
+!trajectory_store/.gitkeep
+data_cache/*
+!data_cache/.gitkeep
 
 # Python build artifacts
 __pycache__/
