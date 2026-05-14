@@ -44,6 +44,80 @@ The system is built up in layers. Each layer rests on the one below. A wrong lay
 
 ---
 
+## Table of contents — the full pyramid
+
+The complete plan, by layer. Stones taught and committed are marked **✅**; stones below the current frontier are **⬜** and tentative — exact ordering, grouping, and count may evolve as we build. BUILD.md phases are noted in parentheses for cross-reference.
+
+### Foundation: INFRASTRUCTURE ✅ (Phase 0, substeps 1–3)
+- Tooling gate: uv, pyproject, mypy strict, ruff, custom design lints, pre-commit
+- Data substrate: Neon Postgres 17, alembic baseline
+- First toy in src layout: `toys/coin.py` → `src/fingym/toys/coin.py` under mypy strict
+
+### Layer 1 — The atom of inference ✅ (Phase 0, substep 4a)
+- Stone 1 ✅ — what a belief is
+- Stone 2 ✅ — what an outcome is, and where time enters (with: what a label is, practically)
+- Stone 3 ✅ — what "scoring a belief" means
+- Stone 4 ✅ — why we grade the belief, not the outcome
+- Stone 5 ✅ — what makes a scoring rule "proper"
+- Stone 6 ✅ — the Brier score, formula and properties
+- Stone 7 ✅ — the log score, formula and Cromwell
+
+### Layer 2 — The evaluator's math ⬜ (Phase 0, substep 4b/4c)
+- Stone 8 ⬜ — calibration curves and reliability diagrams
+- Stone 9 ⬜ — scoreboard assembly (multi-column data structure holding parallel scoring functions)
+- Stone 10 ⬜ — multi-horizon scoring (1m / 3m / 6m / 1y in parallel)
+- Stone 11 ⬜ — expression-type tagging (action-space-aware scoring; equity / option / vol / pair / no-edge)
+- Stone 12 ⬜ — process-quality flag (did the agent update on emissions vs price)
+- Stone 13 ⬜ — decision-quality score (action vs belief, given payoff structure)
+- Stone 14 ⬜ — capacity-adjusted return (edge at deployable size, not nominal size)
+
+### Layer 3 — Evaluator validated on toys ⬜ (Phase 0, substeps 5–8)
+- Stone 15 ⬜ — the 3-state synthetic company toy (known ground truth, second fixture beyond the coin)
+- Stone 16 ⬜ — adversarial agents (confidently-wrong, always-50%, well-calibrated)
+- Stone 17 ⬜ — validating the evaluator ranks the adversaries correctly on every scoreboard dimension
+- Stone 18 ⬜ — reliability diagrams as visual artifacts; the Phase 0 exit criterion
+- Stone 19 ⬜ — the model interface contract (typed Protocol: raw evidence → structured terminal output) — scaffolding for Layer 5
+- Stone 20 ⬜ — the memory artifact schema (versioned, model-readable, horizon/expression-tagged) — scaffolding for Layer 7
+- Stone 21 ⬜ — property tests for math invariants (Bayes commutativity, Kelly monotonicity, Brier/log properness)
+
+> *Phase 0 exit. Phase 0 is "done" when the evaluator correctly orders the three adversarial agents on every scoreboard dimension, the model interface is documented with a stub that compiles, and the memory schema validates a sample artifact.*
+
+### Layer 4 — Point-in-time data spine + raw-evidence channel ⬜ (Phase 1)
+- Stone 22 ⬜ — corpus QA (validate the existing 10-year / 1700-name transcript corpus before any data flows)
+- Stone 23 ⬜ — the six data types in the canonical schema (emissions, derived_features, beliefs, actions, labels, scores)
+- Stone 24 ⬜ — point-in-time discipline in depth (`as_of` vs `as_known`, restatements, look-ahead audits)
+- Stone 25 ⬜ — replay vs live parity (the same pipeline must run both, byte-identical)
+- Stone 26 ⬜ — survivorship bias and the delisted shadow universe (Norgate fundamentals for all in-scope names)
+- Stone 27 ⬜ — the trajectory store as year-2 SFT fuel (every belief/action/outcome/score preserved in SFT-fit format)
+- Stone 28 ⬜ — the raw-evidence channel (typed pipe delivering full unprocessed evidence to a model on demand)
+
+### Layer 5 — Model-driven agent on raw evidence ⬜ (Phase 2)
+- Stone 29 ⬜ — the pure-code plumbing baseline (hand-coded Bayesian — validates the pipeline, never promoted)
+- Stone 30 ⬜ — the first model-driven agent (raw evidence in, structured terminal output out)
+- Stone 31 ⬜ — market-implied belief recovery (implied DCF, options-implied probabilities, implied volatility)
+- Stone 32 ⬜ — the edge calculator (your belief − market-implied belief, net of costs)
+- Stone 33 ⬜ — fractional Kelly sizing (0.25× to 0.5× Kelly for miscalibration absorption)
+
+### Layer 6 — Live operation + memory ⬜ (Phase 3)
+- Stone 34 ⬜ — live-feed engineering (market hours, halts, outage handling without info leak)
+- Stone 35 ⬜ — memory artifact lifecycle (proposed → probationary → promoted → retired)
+- Stone 36 ⬜ — calibration diagnostics dashboard (live reliability diagram, Brier rolling average)
+- Stone 37 ⬜ — no-Michael-comparison enforcement at the live layer (DESIGN.md #10 made structural)
+
+### Layer 7 — Population + promotion gate ⬜ (Phase 4)
+- Stone 38 ⬜ — population variants (≥3 agents varying in model × memory × prompt × reasoning)
+- Stone 39 ⬜ — LLM as proposer of candidate memory items
+- Stone 40 ⬜ — the promotion gate (held-out replay + cross-model regression + survivorship check + domain-of-validity tagging)
+- Stone 41 ⬜ — Goodhart resistance via scoreboard composition (a memory item that improves only one metric is suspect)
+
+### Apex — Year-2 own-model fine-tune ⬜ (Phase 5)
+- Stone 42 ⬜ — cross-model swap test (≥2 frontier + ≥1 open-weights; promoted memory must survive)
+- Stone 43 ⬜ — SFT data preparation from the trajectory store; sample fine-tune on a small open-weights model
+- Stone 44 ⬜ — capacity-adjusted scoring with realistic retail market-impact assumptions
+- Stone 45 ⬜ — the year-2 plan document (data accumulation targets, fine-tune triggers, deployment criteria)
+
+---
+
 ## Layer 1 — The atom of inference
 
 The smallest unit of the entire project. Every higher layer is a variation on the same shape:
@@ -233,12 +307,4 @@ Both proper. Both reward `r = q`. Run both — different failure modes surface i
 
 ---
 
-## Higher layers — to be taught when we reach them
-
-- **The evaluator's math (Layer 2).** Calibration curve, scoreboard assembly, decision-quality, capacity-adjusted return. Multi-horizon scoring (1m/3m/6m/1y in parallel). Action-space-aware tagging (expression types: equity, options, vol, pairs, no-edge).
-- **Evaluator validated on toys (Layer 3).** Coin toy + 3-state synthetic company toy. Adversarial test agents (confidently-wrong, always-50%, well-calibrated). Reliability diagrams. Phase 0 exit criterion: evaluator correctly ranks the three adversarial agents on every scoreboard dimension.
-- **Point-in-time data spine + raw-evidence channel (Layer 4).** Six data types (emissions, derived_features, beliefs, actions, labels, scores). Replay/live parity. Delisted shadow universe. Trajectory store in SFT-fit format.
-- **Model-driven agent on raw evidence (Layer 5).** Raw evidence in, structured terminal output out. Implied DCF, options-implied probabilities, edge calculator, fractional Kelly sizer.
-- **Live operation + memory (Layer 6).** Live calibration dashboard. Memory proposal collection. No Michael comparison.
-- **Population + promotion gate (Layer 7).** ≥3 agent variants. Held-out replay, cross-model regression, survivorship check. Domain-of-validity tagging.
-- **Year-2 own-model fine-tune (Layer 8).** Cross-model swap. SFT data preparation. The data axis of ride-the-exponent.
+*Higher layers (2 through Apex) are itemized stone-by-stone in the table of contents at the top of this document. Detailed summaries land here as each stone is taught.*
