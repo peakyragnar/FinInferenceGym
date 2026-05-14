@@ -6,6 +6,7 @@ This file directs Claude Code. The authoritative project instructions live in [A
 
 - [DESIGN.md](DESIGN.md) is the architectural constitution. Principles here are non-negotiable. If anything else conflicts with DESIGN.md, DESIGN.md wins.
 - [BUILD.md](BUILD.md) is the practical 12-week execution plan derived from DESIGN.md. Each phase has teaching, build, design cross-reference, exit criterion, and slippage-watch components.
+- [DECISIONS.md](DECISIONS.md) is the log of options proposed and explicitly rejected during design, with rationale. Read this to avoid re-litigating settled questions.
 - [AGENTS.md](AGENTS.md) is the operating manual (how to work on the project).
 - [DEFINITIONS.md](DEFINITIONS.md) is the vocabulary. Use those terms precisely — especially the observation vs. label distinction.
 - [intuitions.md](intuitions.md) records the core intuitions Michael is internalizing. Keep it brief; do not let it sprawl.
@@ -18,8 +19,9 @@ When starting a new session (new context window) on this project, do the followi
 
 1. **Read [DESIGN.md](DESIGN.md) in full.** Every principle. Don't skim. The 10 first-principles commitments must be in working memory before any build work proceeds.
 2. **Read [BUILD.md](BUILD.md) in full.** Phase plan, design cross-reference, slippage watches.
-3. **Identify the current phase.** Check git log, recent files in `toys/`, any `PROGRESS.md` if present. Confirm with Michael if unclear.
-4. **Re-read the slippage watches for the current phase.** These are the specific things most likely to drift.
+3. **Read [DECISIONS.md](DECISIONS.md) in full.** This is the log of patterns and frameworks that were considered and rejected. Do not re-propose them.
+4. **Identify the current phase.** Check git log, recent files in `toys/`, any `PROGRESS.md` if present. Confirm with Michael if unclear.
+5. **Re-read the slippage watches for the current phase.** These are the specific things most likely to drift.
 
 Slippage from DESIGN.md is the single biggest project risk during build. Restoring the design state at the start of every session is non-negotiable.
 
@@ -30,6 +32,37 @@ Slippage from DESIGN.md is the single biggest project risk during build. Restori
 - **Michael is the auditor only.** Never use his discretionary trades as a signal, reference, baseline, or "diagnostic." (DESIGN.md #10.)
 - **Themes are outputs, not inputs.** Never bake a thematic view (e.g., "AI dispersion") into universe selection or hypothesis space.
 - **Every "obviously X" is suspect.** Defend it from first principles or flag it as a working assumption.
+
+## Common Bias-Smuggling Patterns (Challenge Aggressively)
+
+These are the specific failure modes that have already occurred during design. If you see them re-emerging, name them and refuse.
+
+1. **Thematic prior disguised as scope.** *"We should focus on names where X is happening / shaping up / about to break."* X is a theme. Themes are outputs of the system, not inputs to its architecture. Even when Michael states the theme with high conviction, do not encode it. If true, the system will discover it from data.
+
+2. **Personal preference disguised as scope.** *"I prefer concentrated / long-horizon / equity-direction positions."* Fine for capital deployment. Cannot shape what the system *analyzes*. Production universe is broad; multi-horizon; full equity complex. Capital deployment is downstream.
+
+3. **Prestigious framework proposed because it's prestigious.** AlphaEvolve, Continual Harness, Garry Tan committee, David Silver RL. Check whether the framework is solving the actual bottleneck (evaluator quality, calibration discipline, point-in-time integrity) or whether the bottleneck is upstream. Most "AI for finance" failures come from imported frameworks that don't address the actual bottleneck.
+
+4. **Human-in-the-loop as "diagnostic."** Even framed as "just a comparison, we won't train on it" — using Michael's discretionary calls as a reference anchor embeds his bias into the loss function. The 4-quadrant matrix (agreement / disagreement / over-confidence / under-confidence relative to Michael) is forbidden.
+
+5. **Strong prior disguised as physics.** DCF, fundamental valuation, sector rotation, "obvious" macro relationships. These are models that often work and frequently fail. Real physics: Bayes math, Kelly, time value, no-arbitrage. Everything else is a hypothesis to be tested.
+
+6. **Single-model lock-in.** Anything that prevents swapping models is a long-term trap. Memory, hypothesis registry, evaluator, promotion gate must be model-agnostic.
+
+7. **"Just for now" or "we can fix it later."** Almost always slippage. Either fix it now, or document the deferral explicitly with a re-evaluation trigger.
+
+8. **Narrowing the model interface to "help" it.** Pre-extracting features, summarizing transcripts, templating reasoning. Constraints migrate to verification, not cognition. Verify hard; let the model reason freely.
+
+9. **Buffet answers.** When Michael asks for an opinion or a decision, give one. Listing options without committing is a failure mode. Commit, then defend.
+
+10. **Scope expansion without reason.** Each new "and we should also..." needs a principle or evidence justification. Default is no.
+
+## Operating Stance
+
+- **Direct, opinionated, willing to push back.** Michael's audit role works only if Claude is willing to commit and be wrong, not list options to avoid being wrong.
+- **Execute, don't propose.** When a plan is set, build. Do not re-architect at every turn.
+- **Refuse settled questions.** If a proposal matches anything in DECISIONS.md, name the entry and decline. Do not re-litigate.
+- **Surface real disagreements; suppress fake ones.** If Claude has a genuine objection to a design choice, raise it forcefully once with reasoning. If the objection is overruled, accept and proceed.
 
 ## Core Goal (from AGENTS.md)
 
