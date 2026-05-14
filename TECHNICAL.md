@@ -18,7 +18,7 @@ When TECHNICAL.md conflicts with DESIGN.md, DESIGN.md wins. Routine library upgr
 
 ## Database
 
-**Postgres 16 hosted on Neon** (free tier, branched workflow).
+**Postgres 17 hosted on Neon** (free tier, branched workflow).
 
 Rationale:
 - Single DB everywhere; production-ready from day 1; cloud-deployable when ready.
