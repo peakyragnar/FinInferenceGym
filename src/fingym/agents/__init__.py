@@ -1,7 +1,7 @@
 """Agents (Layer 3 / Layer 4 — population mechanics).
 
-The population. Each agent is a (model × memory subset × prompt
-structure × reasoning approach) tuple. Agents vary across all four
+The population. Each agent is a (model x memory subset x prompt
+structure x reasoning approach) tuple. Agents vary across all four
 dimensions and compete on the evaluator scoreboard.
 
 Two starting agent types in Phase 2:

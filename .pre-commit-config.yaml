@@ -37,22 +37,11 @@ repos:
         exclude: ^(uv\.lock|.*\.lock\.json)$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.0
+    rev: v0.15.12
     hooks:
       - id: ruff
         args: ["--fix"]
       - id: ruff-format
-
-  # mypy is enabled only after src/fingym/ exists and a pyproject.toml
-  # is in place. Phase 0 Week 1 turns this on.
-  # - repo: https://github.com/pre-commit/mirrors-mypy
-  #   rev: v1.11.0
-  #   hooks:
-  #     - id: mypy
-  #       args: ["--strict"]
-  #       additional_dependencies:
-  #         - pydantic
-  #         - sqlmodel
 
   # import-linter is enabled after src/fingym/ exists and
   # importlinter.toml defines the architectural boundaries.
@@ -64,9 +53,11 @@ repos:
   - repo: local
     hooks:
       # DESIGN.md #10 — Michael is the auditor only.
+      # `uv run python` bypasses pyenv shims (which reject the major.minor
+      # `.python-version`) and pins the interpreter to the project venv.
       - id: no-discretionary-references
         name: no discretionary / michael references in production code
-        entry: python mechanisms/lints/no_discretionary_references.py
+        entry: uv run python mechanisms/lints/no_discretionary_references.py
         language: system
         types: [python]
         exclude: ^(tests/|mechanisms/)
@@ -74,10 +65,21 @@ repos:
       # DESIGN.md #7 — Intelligence in architecture, not weights/prompts.
       - id: no-hardcoded-models
         name: no direct LLM SDK imports outside src/fingym/llm/
-        entry: python mechanisms/lints/no_hardcoded_models.py
+        entry: uv run python mechanisms/lints/no_hardcoded_models.py
         language: system
         types: [python]
         exclude: ^(tests/|src/fingym/llm/|mechanisms/)
+
+      # DESIGN.md #5 — type discipline enforces cognition/verification
+      # boundary at the code level. Runs `uv run mypy` so the type-checker
+      # sees the project's locked dep graph (single source of truth in
+      # pyproject.toml / uv.lock instead of a parallel list here).
+      - id: mypy
+        name: mypy --strict (project)
+        entry: uv run mypy
+        language: system
+        types: [python]
+        pass_filenames: false
 
       # The following are described in TECHNICAL.md and queued for Phase 0.
       # Uncomment as each is implemented and its referenced lint exists.

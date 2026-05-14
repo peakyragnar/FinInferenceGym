@@ -40,12 +40,12 @@ def run(hidden: str, n_flips: int, seed: int) -> None:
     belief = {"fair": 0.5, "biased": 0.5}  # prior: pure ignorance, 50/50
 
     print(f"\nhidden coin = {hidden}   n_flips = {n_flips}   seed = {seed}")
-    print(f"  start            belief(fair)=0.500  belief(biased)=0.500")
+    print("  start            belief(fair)=0.500  belief(biased)=0.500")
 
     heads = 0
     for i in range(1, n_flips + 1):
         f = flip_coin(hidden, rng)
-        heads += (f == "heads")
+        heads += f == "heads"
         belief = update(belief, f)
         if i <= 10 or i % 10 == 0:
             print(
@@ -60,4 +60,4 @@ if __name__ == "__main__":
     # Same seed, different hidden coins. The agent has identical priors
     # in both runs. The only thing that differs is the truth in the box.
     run(hidden="biased", n_flips=100, seed=42)
-    run(hidden="fair",   n_flips=100, seed=42)
+    run(hidden="fair", n_flips=100, seed=42)

@@ -70,8 +70,7 @@ def main(argv: list[str]) -> int:
         violations = check_file(path)
         for line_no, line in violations:
             print(
-                f"{path}:{line_no}: direct LLM SDK import forbidden outside "
-                "src/fingym/llm/.",
+                f"{path}:{line_no}: direct LLM SDK import forbidden outside src/fingym/llm/.",
                 file=sys.stderr,
             )
             print(f"    {line}", file=sys.stderr)

@@ -7,7 +7,7 @@ vendors:
     enabled: false  # enable in Phase 1 after subscription
     credentials_env:
       username: NORGATE_USERNAME
-      password: NORGATE_PASSWORD
+      password: NORGATE_PASSWORD  # pragma: allowlist secret
     data_types:
       - emissions.fundamentals
       - emissions.prices
@@ -34,7 +34,7 @@ vendors:
     description: "Federal Reserve Economic Data — free macro data."
     enabled: false  # enable in Phase 1
     credentials_env:
-      api_key: FRED_API_KEY
+      api_key: FRED_API_KEY  # pragma: allowlist secret
     data_types:
       - emissions.macro_rates
       - emissions.macro_yields

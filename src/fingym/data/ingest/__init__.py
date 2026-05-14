@@ -3,7 +3,7 @@
 Each submodule wraps a specific data source:
   - norgate: PIT fundamentals + prices, including delisted names
   - ibkr: live prices + options + execution
-  - transcripts: Michael's 10-year / 1700-name speaker-tagged corpus
+  - transcripts: existing 10-year / 1700-name speaker-tagged corpus
   - fred: free macro data (rates, yields, inflation)
 
 All ingest writes through the canonical six-data-type schema with

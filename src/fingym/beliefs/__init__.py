@@ -9,7 +9,7 @@ Three canonical inversions (DESIGN.md "The Six Layers" + Intuition 11):
     the current stock price
   - options_implied: probability distribution over future price moves
     extracted from option prices
-  - edge: agent_belief − market_implied_belief, net of costs
+  - edge: agent_belief - market_implied_belief, net of costs
 
 Per Intuition 11: edge is calibrated disagreement that clears costs.
 Three conditions must all hold for a real trade: disagreement with the
