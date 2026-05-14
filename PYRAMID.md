@@ -146,43 +146,125 @@ A **scoring function** is a pure function with this signature:
 score(belief, outcome) -> number
 ```
 
-Three pieces.
+That signature is the whole structure of grading. Stones 1 and 2 gave us the inputs; Stone 3 gives us the function that connects them and produces a comparable verdict. Every higher operation in the evaluator — averaging, bucketing, comparing across agents — is composition over the number this function returns.
 
-**(a) It takes two inputs.** The belief (Stone 1) and the outcome (Stone 2). It cannot be a function of just one. A scorer that ignored the belief would just be measuring the outcome — useless, outcomes happen regardless of what the agent thought. A scorer that ignored the outcome would be measuring the belief in isolation — no grounding in reality. Both inputs are required, every time.
+#### Reading the signature, piece by piece
 
-**(b) It returns a single number.** Not a verdict ("good" / "bad"). Not a structured object. A single number, because we need to:
-- average across many calls to get the agent's overall grade,
-- compare two agents head-to-head,
-- bucket beliefs by claimed confidence and check observed frequency (calibration curve, Stone 8+ later),
-- watch it evolve over time.
+**(a) Two inputs are required.** The belief (Stone 1) and the outcome (Stone 2). Not one or the other.
+- A scorer that ignored the belief would just be measuring the outcome — useless, outcomes happen regardless of what the agent thought.
+- A scorer that ignored the outcome would be measuring the belief in isolation — no grounding in reality.
+- Both must enter the function every time. This is what forces the score to be a statement *about the relationship between what the agent thought and what the world revealed.*
 
-All those operations require a single comparable number per `(belief, outcome)` pair.
+**(b) The output is a single number.** Not a verdict ("good" / "bad"). Not a structured object. A single real-valued number. The reason is *not* aesthetic — it's that every aggregation the evaluator needs to do requires a number you can add, sort, average, and compare.
 
-**(c) Convention in this project: lower is better.** The score is a **loss.** Zero would be perfect; positive is some amount of wrongness. Both Brier and log score follow this convention. ("Higher is better" utility-style scoring also exists and is equivalent up to a sign flip; we stick to loss because it composes more cleanly with averaging and minimization.)
+Four concrete aggregations that drive the project:
 
-#### Three properties that fall out
+- **Mean across many calls.** Average score over N predictions → the agent's overall grade.
+- **Bucket by claimed confidence.** Group all beliefs where the agent said ~70% and check what fraction were right — this is the calibration curve (taught in Stones 8+). Requires numeric scores per row.
+- **Per-horizon and per-expression-type slices.** Same agent might be well-calibrated at 1-month and miserable at 1-year; might be sharp on equity-direction calls and noise on options. Slicing the scores by tag (horizon, expression_type) only works if each row carries a number.
+- **Per-agent comparisons.** When the population mechanic kicks in (Phase 4), we compare ≥3 agents on the same scoreboard. Comparison requires a number.
 
-- **Deterministic.** Same belief + same outcome → same number, every time. No randomness in the scoring layer.
-- **Pure.** No reading external state. No writing external state. No side effects. Pure functions are trivial to test, trivial to compose, trivial to reason about — and the math invariants from DESIGN.md "Architectural Physics" only hold for pure functions.
-- **Lives on the verification side.** The scoring function is the verification engine in miniature. **The agent never calls the scorer on its own work.** (DESIGN.md #5, the cognition/verification boundary. The agent proposes; the evaluator disposes.)
+If the score were a structured verdict, none of those reductions would work. Hence: single number.
 
-#### Concrete shape, on the coin
+**(c) Convention in this project: lower is better.** The score is a **loss.** Zero would be perfect; positive is some amount of wrongness. Both Brier and log score follow this convention. "Higher is better" utility-style scoring also exists and is equivalent up to a sign flip; we stick to loss because it composes more cleanly with averaging and minimization, and the "what's my regret over many calls?" framing maps directly onto loss.
 
-- belief = `{fair: 0.30, biased: 0.70}`
-- outcome = `"biased"`
-- `score(belief, outcome)` = some number `s`
+#### Three required properties — and why each one matters
 
-That `s` is the bridge between the cognition side (where the agent formed the belief) and the verification side (where reality revealed the outcome and grades the belief against it). Every higher operation in the evaluator is composition over `s` — averaging, bucketing, comparing.
+The function isn't just `(belief, outcome) → number` for any function. It has to be:
+
+##### Deterministic
+
+Same `belief` + same `outcome` → same number, every time. **No randomness in the scoring layer.**
+
+*Why this matters.* Imagine instead a scoring function that added small random noise: `noisy_brier(b, o) = brier(b, o) + uniform(-0.01, 0.01)`. The consequences:
+
+- The same (belief, outcome) pair would give different numbers on different runs. The agent's grade would jitter.
+- Confidence intervals on the agent's grade would be contaminated with scorer noise, not just agent variance.
+- You couldn't precisely rank two agents whose true skill gap was below the noise floor — and skill gaps in finance are typically small.
+
+A noisy scorer hides skill behind randomness. The scoring layer has to be silent on uncertainty so that all observed uncertainty is the agent's.
+
+##### Pure
+
+No reading external state, no writing external state, no side effects.
+
+*Why this matters.* Imagine a scoring function that reads a global "current_regime" flag and scales: `regime_aware_brier(b, o) = brier(b, o) * regime_multiplier`. The consequences:
+
+- Same (belief, outcome) gives different scores in different contexts. The same-input-same-output property is gone — and that property is what lets us reproduce, replay, and audit.
+- The scoring function now depends on hidden state. You can't reason about an agent's grade without also tracking what regime was active when the scorer ran.
+- Worst: someone (a future Claude, a future Michael, an automated process) could silently change the multiplier to "fix" an agent's grade. That's exactly the kind of silent bias-import the project guards against. The mechanism layer can't catch what's not in code; impure functions are how invisible adjustments creep in.
+
+Pure functions are auditable. Impure ones are not.
+
+##### Lives on the verification side — the agent never scores itself
+
+The agent's job is to produce beliefs and actions. The evaluator's job is to take those beliefs, see what the world revealed, and produce a score. **These are two separate code paths, and they must not overlap.** (DESIGN.md #5, the cognition/verification boundary. The agent proposes; the evaluator disposes.)
+
+*Why this matters.* If the agent could read its own scoring function, it could:
+- Optimize directly against the score rather than against forming an honest belief — i.e., it could game the metric instead of telling the truth.
+- Detect "this belief would score badly" and silently revise it before emitting, claiming it always thought the revised version.
+- Worst case: read the outcome that the scoring function uses as input and "predict" it perfectly.
+
+In our codebase, this will eventually be enforced structurally — `src/fingym/agents/` will not be allowed to import from `src/fingym/evaluator/`. The `import-linter` rule that does this is queued in TECHNICAL.md and turns on once the evaluator is more substantial. The principle becomes a structural impossibility, not just a request.
+
+#### Walking through a worked example on the coin
+
+Suppose an agent emits these five beliefs over five sequential evaluations, and the outcome is always `"biased"`. Apply the two scoring functions we already built in substep 4a (`brier` and `log_score` in `src/fingym/evaluator/scoring.py`). Numbers come straight from the smoke check.
+
+| Belief | Outcome | Brier | log_score | Shape |
+|---|---|---:|---:|---|
+| `{fair: 0.30, biased: 0.70}` | `biased` | 0.1800 | 0.3567 | calibrated, on the right side |
+| `{fair: 0.01, biased: 0.99}` | `biased` | 0.0002 | 0.0101 | confident, right |
+| `{fair: 0.99, biased: 0.01}` | `biased` | 1.9602 | 4.6052 | confident, wrong |
+| `{fair: 0.50, biased: 0.50}` | `biased` | 0.5000 | 0.6931 | wishy-washy |
+| `{fair: 1.00, biased: 0.00}` | `biased` | 2.0000 | +∞ | Cromwell violation |
+
+Three things to notice in this table:
+
+1. **Each row is one number per scoring function.** Per row, per function. The signature `(belief, outcome) -> number` is literally what's happening.
+2. **Average across the table to get the agent's overall grade.** Mean Brier over the five rows is `(0.18 + 0.0002 + 1.96 + 0.50 + 2.00) / 5 = 0.928`. That single 0.928 is what the agent would be ranked on if we only looked at the mean. The aggregation is just arithmetic over the per-row numbers.
+3. **The Cromwell row poisons the log-score mean.** Mean log score across all five rows = +∞ (one infinity makes the mean infinite). This is *correct behavior* per Stone 1's last bullet: probability 0 on the truth is unrecoverable. The evaluator does not get to look the other way. (Stones 7 and 8+ will return to how this enters real reporting — basically, Cromwell violators get flagged, not averaged.)
+
+The same five rows have given us: a number per row, a mean across rows, a flag on one row. That's the whole machinery of the evaluator's most basic operation. Everything else is more elaborate slicing.
+
+#### A note on "scoreboard, not scalar"
+
+DESIGN.md commits to a *scoreboard* — a vector of metrics — not a single scalar. Stone 3's "returns a single number" claim looks like it contradicts that. It doesn't:
+
+- One **scoring function** returns one number per `(belief, outcome)` row.
+- A **scoreboard** is what you get by running *multiple* scoring functions (Brier, log score, calibration error, decision-quality, capacity-adjusted return, ...) over the same rows in parallel.
+- Per row, the scoreboard is a *vector*: one cell from each function. Across many rows, each column gets aggregated separately.
+
+So: each scoring function obeys the Stone 3 signature individually. The scoreboard is the collection of them. Different scoring functions emphasize different failure modes — Stones 6 and 7 will show how Brier and log score punish overconfidence in different shapes — and that diversity is what makes the scoreboard catch what no single number can.
+
+#### The signature, in the actual code
+
+In `src/fingym/evaluator/scoring.py` from substep 4a:
+
+```python
+def brier[H](belief: dict[H, float], outcome: H) -> float:
+    ...
+
+def log_score[H](belief: dict[H, float], outcome: H) -> float:
+    ...
+```
+
+Both functions are literal instances of `score(belief, outcome) -> number`:
+- `belief: dict[H, float]` is the probability table from Stone 1, generic over the hypothesis alphabet.
+- `outcome: H` is the revealed truth from Stone 2, exactly one hypothesis.
+- `-> float` is the single number.
+
+Both functions are pure (only stdlib `math`, no state). Both are deterministic. Neither is imported anywhere by `src/fingym/agents/` (which is empty for now — the boundary will be enforced structurally as soon as agents exist).
 
 #### What's deliberately unanswered yet
 
 Stone 3 only establishes the *signature.* Three questions remain, each is its own stone:
 
-- **Why grade the belief and not the outcome?** Stone 4. The deepest commitment in the project.
+- **Why grade the belief and not the outcome?** Stone 4. The deepest commitment in the project — it's where the project decides to be a learning system rather than a guessing system.
 - **What separates a good scoring function from a bad one?** Stone 5. The "proper" property — what makes honesty the dominant strategy.
-- **Which specific functions do we use?** Stones 6 and 7 — Brier and log score.
+- **Which specific functions do we use, and how do they implement those properties?** Stones 6 and 7 — Brier and log score, taught from the formulas up.
 
-The two scoring functions already in `src/fingym/evaluator/scoring.py` (`brier` and `log_score`) are concrete instances of this signature. Stones 6 and 7 will retroactively teach what those numbers mean and why those two specifically.
+The functions in `scoring.py` will be retroactively understood after Stones 6 and 7. Right now, you've seen them work numerically; the *why those specific formulas* comes later.
 
 ### Stones upcoming in this layer
 
