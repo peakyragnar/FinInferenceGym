@@ -155,14 +155,35 @@ The U-shape exists because Brier and log score punish confident-wrong **dispropo
 
 **Don't combine routinely.** Each scoring function is its own column on the scoreboard. Aggregations happen per column (mean Brier, mean log score, …). Composition into a single number happens **only at explicit decision points with declared rules** (e.g., "promote a memory item if Brier improves AND log score doesn't worsen"). Per DESIGN.md: scoreboard, not scalar. Routine collapse hides failure modes; explicit collapse at a decision point keeps the components visible.
 
+### Stone 6 — the Brier score, formula and properties
+
+**Formula:**
+
+```
+Brier(belief, outcome) = Σ_h (belief[h] − 1[h == outcome])²
+```
+
+For each hypothesis, take the probability the agent assigned, subtract 1 if that hypothesis is the actual outcome (0 otherwise), square it, sum across all hypotheses.
+
+**Coin example.** Belief `{fair: 0.30, biased: 0.70}`, outcome `"biased"`:
+- For `fair`: `(0.30 − 0)² = 0.09`
+- For `biased`: `(0.70 − 1)² = 0.09`
+- Sum: **0.18**
+
+**Why proper.** Expected Brier `E[Brier | r] = q × 2(1−r)² + (1−q) × 2r²` is a quadratic in r with its unique minimum at `r = q`. Derivative: `−4q + 4r = 0 → r = q`. The valley always lands at the truth, regardless of `q`.
+
+**Edge cases:**
+- Max loss: **2.0** for binary (and any K). **Bounded** — never blows up.
+- Min loss: 0.0 (100% on the truth).
+- Cromwell case (p=0 on the truth): contributes 2.0. Loud but finite. Doesn't dominate averages the way log score does.
+
+**In code.** `src/fingym/evaluator/scoring.py:brier()`. The `for` loop is `Σ_h`; `indicator = 1.0 if hypothesis == outcome else 0.0` is the indicator function; degenerate case (outcome not in belief's support) adds 1.0 as a full-miss penalty.
+
+**Pairs with log score (Stone 7).** Brier is bounded → averages politely across many calls, doesn't scream at near-Cromwell. Log score is unbounded → screams. Running both catches general miscalibration AND catastrophic overconfidence.
+
 ### Stones upcoming in this layer
 
-Both canonical proper scoring rules (Brier, log score) are now conceptually understood AND already implemented in `src/fingym/evaluator/scoring.py` from substep 4a. Remaining stones in Layer 1:
-
-- **Stone 6 — Brier from the formula up.** Algebraic derivation of properness (the valley always lands at `r = q`), explicit link to the implemented code, edge cases.
-- **Stone 7 — log score from the formula up.** Same treatment, plus the explicit Cromwell mechanism (`log(0) = −∞` → `−log(0) = +∞`).
-
-Or — given Michael's grasp of the intuition is now solid — skip ahead to **the next layer (the evaluator's math: calibration curves, scoreboard assembly)** and treat Brier/log score's formula derivations as supporting detail to revisit if a failure mode surfaces. Michael's call.
+- **Stone 7 — log score from the formula up.** Same treatment as Brier, plus the explicit Cromwell mechanism (`log(0) = −∞` → `−log(0) = +∞`).
 
 ---
 
