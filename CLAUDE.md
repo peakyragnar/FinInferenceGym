@@ -1,8 +1,16 @@
 # CLAUDE.md
 
+## The Goal
+
+We are building a system whose cognitive work is done entirely by AI models — reading raw market evidence, forming probability distributions over hidden state, proposing hypotheses, deciding actions. No hand-coded rules, no human-engineered features, no thematic priors taking the place of model reasoning. The model is the engine. Everything below the cognition layer exists to do one thing: verify. Strict math (Bayes, Kelly, proper scoring), strict data discipline (point-in-time, immutable, full provenance), strict promotion (held-out replay only). The architecture is shaped so that as frontier models get better, the system gets better automatically; and as verified trajectories accumulate, we eventually train our own model from them that beats the one we started with. Michael is the auditor — his job is to watch for two things: bias creeping in (his preferences, his themes, his trades smuggled in as signal), and any layer losing inspectability. If both stay true, the system rides the exponent without ceiling.
+
+This statement is the synthesis the architecture serves. DESIGN.md is the formal commitments. CLAUDE.md (this file) is the behavior they imply for Claude Code. PYRAMID.md is the running teaching state.
+
+---
+
 The primary AI behavior file for FinInferenceGym. Claude Code reads this at the start of every session.
 
-For project ethos, see [AGENTS.md](AGENTS.md). For architectural commitments, see [DESIGN.md](DESIGN.md). For the build plan, see [BUILD.md](BUILD.md). For engineering decisions, see [TECHNICAL.md](TECHNICAL.md). For current phase, see [PROGRESS.md](PROGRESS.md).
+For project ethos, see [AGENTS.md](AGENTS.md). For architectural commitments, see [DESIGN.md](DESIGN.md). For the build plan, see [BUILD.md](BUILD.md). For engineering decisions, see [TECHNICAL.md](TECHNICAL.md). For current phase, see [PROGRESS.md](PROGRESS.md). For the running teaching state, see [PYRAMID.md](PYRAMID.md).
 
 ---
 
@@ -12,6 +20,7 @@ For project ethos, see [AGENTS.md](AGENTS.md). For architectural commitments, se
 - **[TECHNICAL.md](TECHNICAL.md)** — engineering decisions (Python 3.12 / uv, Postgres on Neon, mechanism layer, deployment path).
 - **[BUILD.md](BUILD.md)** — 12-week execution plan with teaching, build, design cross-reference, exit criteria, and slippage watches per phase.
 - **[PROGRESS.md](PROGRESS.md)** — current phase status, checklist, next action. **Source of truth for "where are we right now."** Updated at the end of every working session.
+- **[PYRAMID.md](PYRAMID.md)** — running teaching state. Each conceptual stone of the build is taught here in plain language **before** the code lands. Load alongside PROGRESS.md to see *what's been explained* in addition to *where we are*. Auditability requires it.
 - **[DECISIONS.md](DECISIONS.md)** — log of alternatives proposed and rejected. Do not re-litigate.
 - **[BIAS_PATTERNS.md](BIAS_PATTERNS.md)** — specific bias-smuggling patterns to challenge aggressively when they reappear.
 - **[AGENTS.md](AGENTS.md)** — minimal pointer file (for non-Claude agents). Just routes to CLAUDE.md.
@@ -31,9 +40,10 @@ When starting a new session (new context window), before producing any non-trivi
 2. Read **[TECHNICAL.md](TECHNICAL.md)** in full. Stack and mechanism layer.
 3. Read **[BUILD.md](BUILD.md)** in full. Phase plan and slippage watches.
 4. Read **[PROGRESS.md](PROGRESS.md)**. This is the source of truth for current phase.
-5. Read **[DECISIONS.md](DECISIONS.md)** in full. Rejected alternatives.
-6. Read **[BIAS_PATTERNS.md](BIAS_PATTERNS.md)** in full. Named failure modes to challenge.
-7. Re-read the slippage watches for the current phase in BUILD.md.
+5. Read **[PYRAMID.md](PYRAMID.md)** in full. This is the running teaching state — what's been explained to Michael in plain language so far, and what the next conceptual stone is. The build cadence is concept-in-PYRAMID-then-code; do not skip ahead.
+6. Read **[DECISIONS.md](DECISIONS.md)** in full. Rejected alternatives.
+7. Read **[BIAS_PATTERNS.md](BIAS_PATTERNS.md)** in full. Named failure modes to challenge.
+8. Re-read the slippage watches for the current phase in BUILD.md.
 
 Then summarize back: 10 commitments, current phase + next action, slippage watches, 3 most relevant DECISIONS.md / BIAS_PATTERNS.md entries. Do not propose, plan, or expand scope until Michael confirms the summary is accurate.
 
