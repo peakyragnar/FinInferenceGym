@@ -15,7 +15,7 @@ The agent does not choose the update size. The math forces it. There is no learn
 
 The danger: if your hypothesis space is wrong, or your likelihoods are wrong, the math will confidently produce the wrong answer. Never assign probability exactly 0 or 1 to anything you are not logically certain about — once a hypothesis is ruled out, no future evidence can resurrect it.
 
-Toy artifact: [toys/coin.py](toys/coin.py).
+Toy artifact: [src/fingym/toys/coin.py](src/fingym/toys/coin.py).
 
 ## 2. Calibration Over Confidence
 
@@ -69,7 +69,7 @@ This is the alpha hypothesis of the entire gym: **markets price emissions. The o
 
 The whole machinery: `hidden state → emission rules → observations → belief.`
 
-Toy artifact: [toys/coin.py](toys/coin.py).
+Toy artifact: [src/fingym/toys/coin.py](src/fingym/toys/coin.py).
 
 ## 4. Time Grades the Agent
 
