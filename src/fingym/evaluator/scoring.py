@@ -1,0 +1,86 @@
+"""Proper scoring rules.
+
+These are the math primitives of the verification side. They are
+architectural physics (DESIGN.md "Architectural Physics") — not search
+artifacts — because they uniquely make honesty the dominant strategy.
+
+A scoring rule maps (belief, revealed_outcome) -> a real number that
+"scores" the belief. A *proper* scoring rule has the property that, in
+expectation, the way to minimise your score is to report your true
+belief. Lying about confidence costs more than honesty does. Brier and
+log score are the canonical proper scoring rules.
+
+Conventions:
+  - Lower is better. Both Brier and log score are losses.
+  - A belief is a `dict[H, float]` whose values are non-negative and
+    sum to ~1. We do not re-validate that here on every call — beliefs
+    come from agent terminal outputs that are validated at the boundary.
+    Passing an unnormalised belief is undefined behaviour and will be
+    caught at the model-interface layer when that lands.
+  - `H` is generic over the hypothesis alphabet (PEP 695). The coin
+    toy uses `Coin = Literal["fair", "biased"]`; the 3-state company
+    toy will use a 3-element Literal; future state spaces are equally
+    fine.
+
+Cromwell's rule (intuitions.md #1) shows up explicitly in log score:
+when the belief assigns probability 0 to a hypothesis that turns out
+to be the outcome, the score is `+inf`. That is the *correct* loud
+signal — a Cromwell violation is what an evaluator should refuse to
+forgive. Returning `+inf` propagates the violation rather than hiding
+it behind a clipped epsilon (which is what most ML libs do, and which
+silently kills the signal).
+"""
+
+import math
+
+
+def brier[H](belief: dict[H, float], outcome: H) -> float:
+    """Multi-class Brier score.
+
+        BS = sum_h (belief[h] - indicator[h == outcome])^2
+
+    Range: [0, 2] for K hypotheses (it reaches 2 only on a
+    confidently-wrong K=2 prediction). Lower is better. The squaring
+    is what makes Brier a *proper* scoring rule — confidently-wrong
+    predictions are punished disproportionately more than mildly-wrong
+    ones, so on average the way to minimise it is to report your true
+    belief.
+
+    A hypothesis that doesn't appear in `belief` is treated as having
+    probability 0 — but if that's the outcome, it shows up as a square
+    (1 - 0)^2 = 1 *plus* whatever non-zero mass other hypotheses
+    received. The Brier penalty for missing the outcome from your
+    hypothesis space is the same shape as the penalty for assigning it
+    near-zero mass.
+    """
+    score = 0.0
+    seen_outcome = False
+    for hypothesis, probability in belief.items():
+        indicator = 1.0 if hypothesis == outcome else 0.0
+        if hypothesis == outcome:
+            seen_outcome = True
+        score += (probability - indicator) ** 2
+    if not seen_outcome:
+        # outcome was not in the belief's support → penalise as full miss
+        score += 1.0
+    return score
+
+
+def log_score[H](belief: dict[H, float], outcome: H) -> float:
+    """Negative-log-likelihood (log loss) of the outcome under the belief.
+
+        LS = -ln(belief[outcome])
+
+    Range: [0, +inf). Lower is better. Like Brier, this is a proper
+    scoring rule.
+
+    Cromwell case: if `belief[outcome]` is missing or 0, the score is
+    `+inf`. This is deliberate — a hypothesis assigned probability 0
+    that turns out to be the outcome is an unrecoverable inference
+    failure under Bayesian updating (no future evidence can resurrect
+    it). The scoreboard should make that loud.
+    """
+    probability = belief.get(outcome, 0.0)
+    if probability <= 0.0:
+        return math.inf
+    return -math.log(probability)
