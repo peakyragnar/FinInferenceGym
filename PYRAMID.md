@@ -33,14 +33,14 @@ The system is built up in layers. Each layer rests on the one below. A wrong lay
                                   [Model-driven agent on raw evidence]
                           [Point-in-time data spine + raw-evidence channel]
                       [Evaluator validated on toys w/ adversarial agents]
-                    [The evaluator's math: scoring rules + calibration]
-                  [The atom of inference: belief, outcome, score]   ← currently teaching
+                    [The evaluator's math: scoring rules + calibration]   ← starting next
+                  [The atom of inference: belief, outcome, score]   ← Stones 1–7 taught
             [INFRASTRUCTURE: uv, mypy, pre-commit, Neon, alembic]   ← built (Phase 0 substeps 1–2)
 ```
 
 **Infrastructure** (below the pyramid line) is not part of the project itself — it is the ground the pyramid stands on. Tooling gate (mypy strict, ruff, custom design lints, pre-commit), data substrate (Postgres 17 on Neon, alembic migrations), and the mechanism layer that enforces DESIGN.md at the code level. Built in Phase 0 substeps 1–2.
 
-**Current position:** atom-of-inference layer. Stones 1, 2, 3 taught.
+**Current position:** Layer 1 (atom of inference) complete — Stones 1 through 7 taught and committed; both canonical proper scoring rules (Brier, log score) implemented in `src/fingym/evaluator/scoring.py`. Ready to start Layer 2 (the evaluator's math).
 
 ---
 
@@ -181,9 +181,55 @@ For each hypothesis, take the probability the agent assigned, subtract 1 if that
 
 **Pairs with log score (Stone 7).** Brier is bounded → averages politely across many calls, doesn't scream at near-Cromwell. Log score is unbounded → screams. Running both catches general miscalibration AND catastrophic overconfidence.
 
-### Stones upcoming in this layer
+### Stone 7 — the log score, formula and Cromwell
 
-- **Stone 7 — log score from the formula up.** Same treatment as Brier, plus the explicit Cromwell mechanism (`log(0) = −∞` → `−log(0) = +∞`).
+**Formula:**
+
+```
+log_score(belief, outcome) = −ln(belief[outcome])
+```
+
+Take the probability the agent assigned to the actual outcome, take its natural log, flip the sign. Only `belief[outcome]` from the distribution matters; everything else is ignored.
+
+**Coin example.** Belief `{fair: 0.30, biased: 0.70}`, outcome `"biased"`:
+- log_score = `−ln(0.70) ≈ 0.3567`
+
+**Why proper.** Expected log score `E = −q ln(r) − (1−q) ln(1−r)` is U-shaped (convex) in r with unique minimum at `r = q`. Derivative `−q/r + (1−q)/(1−r) = 0 → r = q`. Same proper property as Brier; different curve shape.
+
+**The Cromwell mechanism — built-in infinite penalty:**
+
+- `ln(0) = −∞` → `−ln(0) = +∞`.
+- Agent assigned probability 0 to the actual outcome → log score = `+∞`. **Literally infinite, not "very bad."**
+- This is intentional: the math refuses to forgive an unrecoverable Bayesian failure. A probability-0 hypothesis cannot be resurrected by any future evidence; the log score forces that unrecoverability into the loss.
+- Smooth approach to infinity (catches *near*-Cromwell, not just exact zero):
+  - `p = 0.10` → loss 2.30
+  - `p = 0.01` → loss 4.61
+  - `p = 0.001` → loss 6.91
+  - `p = 0` → loss `+∞`
+
+**Edge cases:**
+
+- Min loss: 0.0 (probability 1 on the truth).
+- Max loss: **unbounded**.
+- One row of `+∞` makes any mean `+∞`. Operational handling: count Cromwell violations separately, average only over non-violation rows. `+∞` IS the signal, not an average input.
+
+**In code.** `src/fingym/evaluator/scoring.py:log_score()`. `belief.get(outcome, 0.0)` pulls the probability; returns `math.inf` if zero-or-missing; otherwise `−math.log(probability)`. The `math.inf` IS the Cromwell signal — downstream code is responsible for handling it loudly.
+
+**Brier vs log score, side by side:**
+
+| Property | Brier | log score |
+|---|---|---|
+| Inputs used | whole distribution | only `belief[outcome]` |
+| Max loss | 2.0 (bounded) | `+∞` (unbounded) |
+| At Cromwell | 2.0 | `+∞` |
+| Averaging | smooth | one bad row dominates |
+| Best for | general miscalibration | near-Cromwell detection |
+
+Both proper. Both reward `r = q`. Run both — different failure modes surface in different columns.
+
+---
+
+**Layer 1 — atom of inference — complete.** Belief, outcome, label, score signature, why-belief-not-outcome, properness, Brier, log score. Both canonical proper scoring rules are conceptually grounded AND implemented in `src/fingym/evaluator/scoring.py` (substep 4a). Next: **Layer 2 — the evaluator's math** (calibration curves, scoreboard assembly, multi-horizon and expression-type aggregation).
 
 ---
 
