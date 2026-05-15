@@ -40,7 +40,7 @@ The system is built up in layers. Each layer rests on the one below. A wrong lay
 
 **Infrastructure** (below the pyramid line) is not part of the project itself — it is the ground the pyramid stands on. Tooling gate (mypy strict, ruff, custom design lints, pre-commit), data substrate (Postgres 17 on Neon, alembic migrations), and the mechanism layer that enforces DESIGN.md at the code level. Built in Phase 0 substeps 1–2.
 
-**Current position:** Layers 1 and 2 complete. Stones 1–7 (atom of inference), 7a (four-thing decomposition bridge), 8–14 (evaluator's math: calibration, scoreboard, multi-horizon, expression-type, market-delta, process-quality, decision-quality with NoAction as peer, capacity-adjusted return) all taught and distilled. Next: **Layer 3 — evaluator validated on toys** (Stones 15–21, Phase 0 substeps 5–8): synthetic-market toy, adversarial agents, evaluator validation, reliability diagrams as visual exit criterion, model interface contract, memory artifact schema, property tests. Phase 0 exit is at the end of Layer 3.
+**Current position:** Layers 1 and 2 complete; Layer 3 begun. Stones 1–7 (atom of inference), 7a (four-thing decomposition bridge), 8–14 (evaluator's math: calibration, scoreboard, multi-horizon, expression-type, market-delta, process-quality, decision-quality with NoAction as peer, capacity-adjusted return), and 15 (the 3-state synthetic-market toy — world + believer + two-believer scenario + Stone 11a scoreboard reproduction in `src/fingym/toys/synthetic_market.py`) all taught, distilled, and code-verified. Next: **Stones 16–21** (adversarial agents, evaluator validation, reliability diagrams as visual exit criterion, model interface contract, memory artifact schema, property tests) — Phase 0 substeps 5–8. Phase 0 exit is at the end of Layer 3.
 
 ---
 
@@ -74,7 +74,7 @@ The complete plan, by layer. Stones taught and committed are marked **✅**; sto
 - Stone 14 ✅ — capacity-adjusted return. Per-Contract `realized_edge = nominal_edge − spread − commission − market_impact(size, ADV) − alpha_decay`. Square-root law for impact: impact grows with `sqrt(size / ADV)`. Aggregated as `mean_realized_edge` and the diagnostic ratio `realized_to_nominal`. Sliced primarily by **deployable size bucket** — different agents have different capacity profiles, and the gate evaluates per-size, not just per-aggregate. Column on scoreboard, NOT a hard cap (capacity is niche-specific) — with one near-tautological structural check: realized edge at the agent's stated size must be positive (otherwise it's not edge, it's a losing strategy). Full summary in Layer 2 body below.
 
 ### Layer 3 — Evaluator validated on toys ⬜ (Phase 0, substeps 5–8)
-- Stone 15 ⬜ — the synthetic-market toy (hidden company state + market participant with its own belief + evidence stream that imperfectly informs both; second fixture beyond the coin). Exercises the full pipeline `P_AI(state) → P_market(state) → action → score` in toy world where the evaluator knows true state, true future path, AND the market's actual belief. Without a market in the toy, we cannot distinguish "agent calibrated about state but market also calibrated (no edge)" from "agent calibrated about state and market mispriced (real edge)" — and that distinction is what the project monetizes.
+- Stone 15 ✅ — the synthetic-market toy. Lives at `src/fingym/toys/synthetic_market.py` under mypy strict. Four-step build: (1) the world (likelihood table + emission sampler + frequency verification), (2) a single Bayesian believer over the 3 states, (3) two believers (agent + market) with different priors evolving on a shared emission stream plus `belief_delta` on truth tick-by-tick, (4) a fixed-scenario scoreboard reproducing PYRAMID Stone 11a's worked example exactly — Brier and log_score identical across the calibrated-agent rows; `belief_delta_on_truth` distinguishes edge / no-edge / anti-edge. `belief_delta_on_truth` added to `src/fingym/evaluator/scoring.py` alongside `brier` and `log_score`. Full distilled summary in Layer 3 body below.
 - Stone 16 ⬜ — adversarial agents (confidently-wrong, always-50%, well-calibrated)
 - Stone 17 ⬜ — validating the evaluator ranks the adversaries correctly on every scoreboard dimension
 - Stone 18 ⬜ — reliability diagrams as visual artifacts; the Phase 0 exit criterion
@@ -901,6 +901,45 @@ It only measures: at the agent's stated size, what fraction of the nominal edge 
 ---
 
 **Layer 2 — the evaluator's math — complete.** Stones 8 through 14: calibration (8), scoreboard assembly (9), multi-horizon (10), expression-type tagging (11), market-delta scoring (11a), process-quality flag (12), decision-quality with NoAction as peer (13), capacity-adjusted return (14). The evaluator's full column set is now specified at the conceptual level. Implementation follows in Phase 0 substeps 4b/4c. Next: **Layer 3 — evaluator validated on toys** (synthetic-market toy, adversarial agents, validation, reliability diagrams, model interface contract, memory schema, property tests).
+
+---
+
+## Layer 3 — Evaluator validated on toys
+
+### Stone 15 — the 3-state synthetic-market toy
+
+**Why this stone exists.** Layer 2 specified the columns the evaluator needs. Layer 3 is where the evaluator gets *graded*. In real markets we never know `S_true` for certain — future emissions are proxies, and proxies are themselves hypotheses. To verify that the scoring code does what it claims, we need a world where we DO know the truth. Stone 15 is that world.
+
+**The toy.** A hidden 3-state company `{strengthening, stable, decaying}`. Three emission types per tick `{strong, mixed, weak}`. A 3×3 likelihood table connecting state → emission. The table IS the world's physics: rows sum to 1, columns differ in spread (e.g., `strong` is highly diagnostic for strengthening — 0.70 vs 0.10 for decaying; `mixed` is non-diagnostic between the extremes — 0.20 vs 0.20).
+
+**Two believers, not one.** Stone 11a's `belief_delta_on_truth` column is only testable if there IS a market belief to subtract from. The coin toy had no market; Stone 15 fixes that gap. Both believers use the *same* likelihood table (matched-likelihood, different-prior setup); what differs is their starting prior. Same Bayes math operating on the same emission stream from different starting points — exactly enough to test the gap column without complicating the toy with mismatched world models.
+
+**Four-step build, each with a visible output:**
+
+| Step | What | Verification |
+|------|------|--------------|
+| 1    | World: likelihood table + emission sampler + frequency verification | Empirical frequencies within ~2pp of expected over 1000 samples per state |
+| 2    | Single Bayesian believer over 3 states (uniform prior) | Belief evolution table; clean convergence when truth is strengthening; messy zigzag when truth is decaying because the emission stream is noisy |
+| 3    | Two believers (agent + market) with Stone 11a priors | Side-by-side belief evolution; gap on truth = `+0.25 → +0.000` (Run 1: edge erodes); stays around `−0.22` (Run 2: anti-edge persists) |
+| 4    | Scoreboard reproduction of PYRAMID Stone 11a worked example | Five fixed scenarios; Brier/log_score identical across A/B/C (same P_AI, same truth); `belief_delta_on_truth` varies `+0.25 / 0.00 / −0.25` |
+
+**Key insights validated mechanically by the toy:**
+
+- *Diagnosticity is column spread.* Bayes' jump size is set by how different an emission's column is across states. `strong` (spread 0.70/0.30/0.10) moves belief sharply; `mixed` (0.20/0.40/0.20) barely moves belief because the strg/dec rows are tied.
+- *Cromwell holds throughout.* Bayesian update never sends a probability to exactly 0 — the likelihood table has no zeros, so the math never multiplies by zero. Display rounds tiny floats to `0.000`; the math itself keeps a positive tail.
+- *Bayes can go up AND down.* When the truth's emissions are noisy (Run 2's decaying truth emits one `strong` and two `mixed` in its first four ticks), the agent's belief on truth can drop BELOW the uniform prior. Calibration is not monotonic ascent; it is the math doing exactly what evidence forces.
+- *Edge erodes; anti-edge persists.* Two-believer Run 1 shows the gap shrinking from `+0.25` to `+0.000` as both believers converge — informational edge has a half-life. Two-believer Run 2 shows the gap stuck around `−0.22` — a bad prior is hard to recover from in 12 ticks even with perfectly correct Bayesian updates.
+- *Layer 1 cannot see the gap.* The scoreboard demo reproduces Stone 11a's worked example *exactly*: A/B/C share identical Brier (0.3150) and log_score (0.5978); only `belief_delta_on_truth` varies `+0.25 / 0.00 / −0.25`. That divergence IS the architectural reason Stone 11a earns its own column.
+
+**Connections forward.**
+- Stone 16 plugs adversarial agents (confidently-wrong, always-50%, well-calibrated) INTO this toy.
+- Stone 17 validates the evaluator ranks them correctly on every column.
+- Stone 18 adds reliability diagrams as the visual exit criterion.
+- Beyond Phase 0, the toy stays as the regression test for every future change to the evaluator (e.g., when calibration-curve / process-quality / decision-quality / capacity-adjusted columns get added).
+
+**In code.** [src/fingym/toys/synthetic_market.py](src/fingym/toys/synthetic_market.py) implements all four steps as separate runnable demos (`print_world_verification`, `run`, `run_two_believers`, `run_scoreboard_demo`). [src/fingym/evaluator/scoring.py](src/fingym/evaluator/scoring.py) provides the three scoring functions: `brier`, `log_score`, `belief_delta_on_truth` — all PEP 695 generic over the hypothesis type. Both modules mypy strict clean. Stone 11a priors live as module constants (`STONE_11A_AGENT_PRIOR`, `STONE_11A_MARKET_PRIOR`).
+
+**One sentence.** Stone 15 is the 3-state synthetic-market fixture — a hidden company plus a matched-likelihood pair of Bayesian believers (agent + market) evolving on a shared emission stream — where the evaluator's three primary columns (Brier, log_score, belief_delta_on_truth) are validated against fixed scenarios that reproduce PYRAMID Stone 11a's worked example by code rather than by hand.
 
 ---
 
