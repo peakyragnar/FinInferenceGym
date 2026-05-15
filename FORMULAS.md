@@ -193,6 +193,66 @@ Toy implementation: `src/fingym/toys/calibration_diagram.py`. To be lifted into 
 
 ---
 
+## Scoreboard schema (Stone 9)
+
+The Layer-2 data structure that holds evaluation results. Each row corresponds to one `Contract` (see [CONTRACT.md](CONTRACT.md)).
+
+### Row schema (grows column-by-column per stone)
+
+```
+Scoreboard row {
+  # Identity and metadata (for slicing)
+  prediction_id:    UUID
+  decision_time:    datetime
+  agent_id:         str
+  model_id:         str
+  prompt_version:   str
+  horizon:          str            # "1m", "3m", "6m", "1y", ...
+  expression_type:  str            # "equity-long" / "option-call" / "no-action" / ...
+  sector:           str | None
+
+  # What the agent emitted
+  agent_claim:      BeliefDistribution   # P_AI(S)
+
+  # What reality delivered (filled in at horizon)
+  outcome:          HypothesisLabel      # S_true
+  outcome_positive: bool                 # for binary calibration
+
+  # Scoring columns (filled in by evaluator; grow per stone)
+  brier:                 float
+  log_score:             float            # may be +inf (Cromwell)
+  claim_bucket:          int              # 0..9, for ECE aggregation
+
+  # Future columns (placeholders, populated as stones land)
+  # belief_delta_on_truth: float           # Stone 11a
+  # process_quality_flag:  bool            # Stone 12
+  # decision_quality:      float           # Stone 13
+  # capacity_adjusted:     float           # Stone 14
+}
+```
+
+### Operations
+
+- **Aggregate per column.** `mean(scoreboard.brier)`, `mean(scoreboard.log_score where not cromwell)`, etc.
+- **Slice by metadata.** `scoreboard.filter(horizon=="6m").mean(brier)`, etc.
+- **Compare agents.** Same scoreboard with `agent_id` column lets aggregations group by agent.
+- **Collapse to scalar.** Only at decision points; rule must be declared and written down.
+
+### Implementation
+
+- Schema: `src/fingym/evaluator/scoreboard.py` (Phase 0 substep 4b/4c deliverable).
+- Storage: Postgres table per the data spine (L0 trajectory records, see [memory-design.md](memory-design.md)).
+- Immutable, append-only. Aggregations computed from the immutable rows; no row updated in place.
+
+### Connection to other stones
+
+- Brier (Stone 6) — populates `brier` column.
+- log_score (Stone 7) — populates `log_score` column.
+- Calibration (Stone 8) — uses `claim_bucket` for aggregation; produces ECE per agent.
+- Stones 10–14 — each adds its column.
+
+---
+
 ## How this document grows
 
 Each stone that introduces new formal notation adds an entry here, organized by stone number. Cross-references:
@@ -205,7 +265,6 @@ A formula entry must include: the formula or symbol, plain-language description,
 
 ### Upcoming entries (parked, to be filled in as taught)
 
-- Scoreboard aggregation operators (Stone 9)
 - Multi-horizon scoring composition (Stone 10)
 - Expression-type payoff structures (Stone 11)
 - Market-delta scoring formula (Stone 11a)

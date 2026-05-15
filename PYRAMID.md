@@ -65,7 +65,7 @@ The complete plan, by layer. Stones taught and committed are marked **✅**; sto
 
 ### Layer 2 — The evaluator's math ⬜ (Phase 0, substep 4b/4c)
 - Stone 8 ✅ — calibration curves and reliability diagrams. Measures whether the agent's confidence language matches reality at scale. Runnable toy: `uv run python -m fingym.toys.calibration_diagram`. Full summary in Layer 2 body below.
-- Stone 9 ⬜ — scoreboard assembly (multi-column data structure holding parallel scoring functions)
+- Stone 9 ✅ — scoreboard assembly. A table with one row per prediction and one column per scoring metric, plus metadata columns (date, horizon, expression-type, agent_id) for slicing. Kept decomposed by default; collapsed to single numbers only at explicit decision points with declared rules. Full summary in Layer 2 body below.
 - Stone 10 ⬜ — multi-horizon scoring (1m / 3m / 6m / 1y in parallel)
 - Stone 11 ⬜ — expression-type tagging within `TradeAction` (action-space-aware scoring; equity-long / equity-short / option-call / option-put / option-spread / option-straddle / vol-long / vol-short / pair). `NoAction` is a typed peer of `TradeAction`, not a sub-type of it — handled by Stone 13, not folded in here.
 - Stone 11a ⬜ — market-delta scoring (the agent's belief minus market-implied belief, scored against realized payoff). Distinguishes "well-calibrated but no edge" from "well-calibrated AND edge." Without this, the scoreboard cannot tell a calibrated agent that agrees with the market apart from a calibrated agent that monetizably disagrees. Operates on the `belief_delta` field of a `Contract` (see [CONTRACT.md](CONTRACT.md)). At Phase 0 the toy provides `P_market`; at Phase 2 the recovery mechanism (Stone 31) provides it for real markets.
@@ -420,6 +420,52 @@ Calibration error: **7.0 pp**. One bucket. Agent has no discriminative value —
 **Runnable toy.** [src/fingym/toys/calibration_diagram.py](src/fingym/toys/calibration_diagram.py). Try: change `true_probs = [0.4, 0.6, 0.8]` to `[0.2, 0.5, 0.8]` — base rate becomes 50%, agent U's ECE drops near zero, and U *looks* calibrated even though it has zero discrimination. That's the discrimination point made vivid.
 
 **Formal symbols.** Reference notation lives in [FORMULAS.md](FORMULAS.md) under "Calibration measurement (Stone 8)." Not needed for understanding; provided for code/agent reference.
+
+### Stone 9 — scoreboard assembly
+
+**The data structure.** The evaluator's output is a **table**. One row per prediction (one `Contract`). One column per scoring metric. Plus metadata columns for slicing — date, agent_id, horizon, expression-type, sector. Production scoreboards have many columns; the schema grows as each Layer-2 stone adds its metric.
+
+**Example shape** (six columns shown; the real one is wider):
+
+| Prediction ID | Date | Agent's claim | What happened | Brier | log_score |
+|---|---|---|---|---:|---:|
+| pred_001 | 2026-05-15 | 70% biased | biased | 0.18 | 0.36 |
+| pred_002 | 2026-05-16 | 50% biased | fair | 0.50 | 0.69 |
+| pred_003 | 2026-05-17 | 99% biased | biased | 0.0002 | 0.01 |
+| pred_004 | 2026-05-18 | 30% biased | biased | 0.98 | 1.20 |
+
+That's it. A spreadsheet of evaluation results.
+
+**Why we keep it decomposed (do NOT routinely collapse to one number):**
+
+- **Different columns catch different failure modes.** Brier catches moderate overconfidence; log score catches near-Cromwell; calibration error catches systematic skew. Each column lights up red for a different kind of failure. Averaging them washes out the signal.
+- **Goodhart resistance.** A single optimization target gets gamed. Multiple parallel metrics under different proper scoring rules cannot all be gamed simultaneously without honest reporting. One column = one thing to fool; many columns = harder to fool.
+
+**Two kinds of operations on the scoreboard:**
+
+- **Aggregate per column.** Mean Brier across all rows. Mean log score (filtering out Cromwell rows). ECE per bucket. Count of rows where Brier < 0.1. Each aggregation is per column; columns stay separate.
+- **Slice by metadata.** "Mean Brier on 6-month horizon predictions only" — filter rows by horizon, then mean. "Calibration error in tech sector vs financial sector" — filter, compute per slice. Same scoreboard, different slices answer different questions.
+
+**When to collapse to a single number — only at specific decision points with explicit rules.** Example promotion rule:
+
+> Promote a memory item to L3 if and only if its addition improves Brier by ≥5% AND doesn't worsen log score AND doesn't widen any calibration bucket gap by more than 3 percentage points.
+
+That's three columns with three thresholds. The collapse rule is written down. The scoreboard itself stays decomposed. From intuitions.md #2: "Collapse to a scalar only at decision points, and make the collapse rule explicit."
+
+**How Stones 10–14 use this scoreboard:**
+
+- Stone 10 (multi-horizon) — adds a `horizon` column; runs aggregations per horizon slice.
+- Stone 11 (expression-type) — adds an `expression_type` column; aggregations per action type.
+- Stone 11a (market-delta) — adds a `belief_delta_on_truth` column.
+- Stones 12, 13, 14 — each add their column.
+
+The scoreboard schema is locked at the structural level here; columns grow as each stone lands.
+
+**Connection to memory architecture.** Scoreboard rows are L0 trajectory records (see [memory-design.md](memory-design.md)). Immutable, append-only, point-in-time. Aggregations are computed *from* the immutable rows; no row is ever updated in place.
+
+**In code.** Schema lives in `src/fingym/evaluator/scoreboard.py` (Phase 0 substep 4b/4c deliverable). Row construction at evaluation time; aggregations and slicing performed by the evaluator's reporting layer.
+
+**One sentence.** The scoreboard is a table — one row per prediction, one column per scoring metric, plus metadata columns for slicing. Decomposed by default. Collapse only at explicit decision points with declared rules.
 
 ---
 
