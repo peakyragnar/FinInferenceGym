@@ -35,6 +35,7 @@ Run: `uv run python -m fingym.toys.adversarial_agents`
 """
 
 import random
+from dataclasses import dataclass
 from typing import Protocol
 
 from fingym.evaluator.scoring import belief_delta_on_truth, brier, log_score
@@ -256,30 +257,38 @@ def print_single_episode_demo(
         print(f"{a.name:<32} | {b[truth]:>11.3f} | {br:>7.3f} | {ls:>9.3f} | {gap:>+12.3f}")
 
 
-def run_multi_episode_demo(
+@dataclass(frozen=True)
+class AgentMeans:
+    """Per-agent aggregate scores across N episodes.
+
+    Returned (as a dict keyed by agent name) by `aggregate_n_episodes`.
+    Used by both `run_multi_episode_demo` (the printed display) and the
+    integration test in `tests/integration/test_evaluator_ranks_adversaries.py`.
+    """
+
+    name: str
+    mean_brier: float
+    mean_log_score: float
+    mean_gap: float
+    n_episodes: int
+
+
+def aggregate_n_episodes(
     n_episodes: int = 100,
     n_emissions_per_episode: int = 12,
     base_seed: int = 42,
-) -> None:
-    """Run the three adversarial agents plus the market across N episodes.
+) -> tuple[dict[CompanyState, int], dict[str, AgentMeans]]:
+    """Run N episodes; return (truth_counts, per_agent_means).
 
-    Each episode picks a fresh random truth (uniformly over the 3 states)
-    and a fresh emission seed (`base_seed + episode_idx + 1`). At the end
-    of each episode, each agent's final belief is scored against truth via
-    Brier, log_score, and belief_delta_on_truth (vs the market's belief).
-    Results aggregate as per-agent means.
+    Each episode picks a random truth uniformly over the 3 states, uses a
+    fresh emission seed (`base_seed + episode_idx + 1`), and scores each
+    agent's final belief against the chosen truth via Brier, log_score,
+    and belief_delta_on_truth (vs the market's belief).
 
-    A single episode can be lucky or unlucky (Stone 15 Run 2 vs Run 1). The
-    point of N episodes is to verify the ranking is robust on AVERAGE.
-
-    Expected ranking on Brier and log_score:
-      BayesianAgent (best) < UniformAgent (middle) < ConfidentAgent (worst)
-
-    The ConfidentAgent does fine on the ~1/3 of episodes where truth happens
-    to be `decaying` (the state it's confident on); on the other ~2/3 it
-    scores catastrophically. The mean stays bad. UniformAgent's Brier is
-    constant at 0.667 by symmetry. BayesianAgent generally converges close
-    to truth; its mean should be visibly lowest.
+    Deterministic — same arguments produce the exact same results. This
+    function is the data source for both `run_multi_episode_demo` (printed
+    display) and the integration tests (PYRAMID.md Stone 17). Both consume
+    this function, so the numbers in the demo and the asserts always agree.
     """
     truth_rng = random.Random(base_seed)
     truth_choices: list[CompanyState] = list(STATES)
@@ -291,7 +300,7 @@ def run_multi_episode_demo(
         "BayesianAgent",
         "Market",
     ]
-    scores: dict[str, dict[str, list[float]]] = {
+    raw_scores: dict[str, dict[str, list[float]]] = {
         name: {"brier": [], "log_score": [], "gap": []} for name in agent_names
     }
 
@@ -315,9 +324,47 @@ def run_multi_episode_demo(
         market_belief = market.belief
         for a in all_actors:
             b = a.belief
-            scores[a.name]["brier"].append(brier(b, truth))
-            scores[a.name]["log_score"].append(log_score(b, truth))
-            scores[a.name]["gap"].append(belief_delta_on_truth(b, market_belief, truth))
+            raw_scores[a.name]["brier"].append(brier(b, truth))
+            raw_scores[a.name]["log_score"].append(log_score(b, truth))
+            raw_scores[a.name]["gap"].append(belief_delta_on_truth(b, market_belief, truth))
+
+    per_agent: dict[str, AgentMeans] = {
+        name: AgentMeans(
+            name=name,
+            mean_brier=sum(raw_scores[name]["brier"]) / n_episodes,
+            mean_log_score=sum(raw_scores[name]["log_score"]) / n_episodes,
+            mean_gap=sum(raw_scores[name]["gap"]) / n_episodes,
+            n_episodes=n_episodes,
+        )
+        for name in agent_names
+    }
+
+    return truth_counts, per_agent
+
+
+def run_multi_episode_demo(
+    n_episodes: int = 100,
+    n_emissions_per_episode: int = 12,
+    base_seed: int = 42,
+) -> None:
+    """Print the per-agent summary from `aggregate_n_episodes`.
+
+    Thin wrapper over `aggregate_n_episodes`. The integration test consumes
+    `aggregate_n_episodes` directly to assert on the same numbers.
+
+    Expected ranking on Brier and log_score:
+      BayesianAgent (best) < UniformAgent (middle) < ConfidentAgent (worst)
+
+    ConfidentAgent does fine on the ~1/3 of episodes where truth happens to
+    be `decaying`; on the other ~2/3 it scores catastrophically. UniformAgent's
+    Brier is constant at 0.667 by symmetry. BayesianAgent generally
+    converges close to truth; its mean should be visibly lowest.
+    """
+    truth_counts, per_agent = aggregate_n_episodes(
+        n_episodes=n_episodes,
+        n_emissions_per_episode=n_emissions_per_episode,
+        base_seed=base_seed,
+    )
 
     print(
         f"\nMulti-episode summary — {n_episodes} episodes, "
@@ -330,13 +377,13 @@ def run_multi_episode_demo(
     print(header)
     print("-" * len(header))
 
-    for name in agent_names:
-        rows = scores[name]
-        n = len(rows["brier"])
-        mean_brier = sum(rows["brier"]) / n
-        mean_ls = sum(rows["log_score"]) / n
-        mean_gap = sum(rows["gap"]) / n
-        print(f"{name:<32} | {mean_brier:>10.3f} | {mean_ls:>11.3f} | {mean_gap:>+10.3f}")
+    for means in per_agent.values():
+        print(
+            f"{means.name:<32} | "
+            f"{means.mean_brier:>10.3f} | "
+            f"{means.mean_log_score:>11.3f} | "
+            f"{means.mean_gap:>+10.3f}"
+        )
 
 
 if __name__ == "__main__":
