@@ -61,14 +61,14 @@ The complete plan, by layer. Stones taught and committed are marked **✅**; sto
 - Stone 5 ✅ — what makes a scoring rule "proper"
 - Stone 6 ✅ — the Brier score, formula and properties
 - Stone 7 ✅ — the log score, formula and Cromwell
-- Stone 7a ✅ — **the four-thing decomposition** (`S_true`, `P_AI(S)`, `P_market(S)`, `Action(A)`). Bridge from Layer 1 to Layer 2: Layer 1 scored a belief vs reality; Layer 2 scores a belief vs a *competing belief* (the market's), arbitrated by reality. Anchor: money lives in `P_AI − P_market` only when an `Action(A)` monetizes it after costs *and* `S_true` validates the side. Runnable toy: `uv run python -m fingym.toys.four_thing_decomp` ([src/fingym/toys/four_thing_decomp.py](src/fingym/toys/four_thing_decomp.py)). Symbols in [FORMULAS.md](FORMULAS.md). Full distilled summary in Layer 1 body below.
+- Stone 7a ✅ — **the four-thing decomposition** (`S_true`, `P_AI(S)`, `P_market(S)`, `Action(A)`). Bridge from Layer 1 to Layer 2: Layer 1 scored a belief vs reality; Layer 2 scores a belief vs a *competing belief* (the market's), arbitrated by reality. Anchor: money lives in `P_AI - P_market` only when an `Action(A)` monetizes it after costs *and* `S_true` validates the side. Symbols in [FORMULAS.md](FORMULAS.md). Full distilled summary in Layer 1 body below.
 
 ### Layer 2 — The evaluator's math ⬜ (Phase 0, substep 4b/4c)
-- Stone 8 ✅ — calibration curves and reliability diagrams. Measures whether the agent's confidence language matches reality at scale. Runnable toy: `uv run python -m fingym.toys.calibration_diagram`. Full summary in Layer 2 body below.
+- Stone 8 ✅ — calibration curves and reliability diagrams. Measures whether the agent's confidence language matches reality at scale (across many predictions, grouped by claimed confidence). Full summary in Layer 2 body below.
 - Stone 9 ✅ — scoreboard assembly. A table with one row per prediction and one column per scoring metric, plus metadata columns (date, horizon, expression-type, agent_id) for slicing. Kept decomposed by default; collapsed to single numbers only at explicit decision points with declared rules. Full summary in Layer 2 body below.
 - Stone 10 ✅ — multi-horizon scoring (1m / 3m / 6m / 1y in parallel; horizon set is parameterizable, not hardcoded). Same decision time produces one Contract per horizon; each scored independently. The `horizon` column on the scoreboard enables per-horizon slicing for aggregation, per-horizon held-out replay at promotion, and per-horizon domain-of-validity tagging on promoted skills. Full summary in Layer 2 body below.
 - Stone 11 ✅ — expression-type tagging within `TradeAction`. Same belief can be expressed many ways (equity-long, option-call, option-spread, vol-long, pair, etc.) with different payoff structures. The scoreboard carries `expression_type` as the broad category; specific trade details (strike, expiration, size, premium) live inside the `TradeAction` object on the Contract. Per-expression-type promotion gate. `NoAction` is a typed peer, not folded here. Full summary in Layer 2 body below.
-- Stone 11a ✅ — market-delta scoring. The first scoreboard column that takes `P_market` into the math. Per-row value: `belief_delta_on_truth = P_AI(S_true) - P_market(S_true)`. Positive = monetizable edge; zero = no edge; negative = anti-edge. Distinguishes the three situations Layer 1 alone cannot see. Runnable toy: `uv run python -m fingym.toys.market_delta_scoring`. Full summary in Layer 2 body below.
+- Stone 11a ✅ — market-delta scoring. The first scoreboard column that takes `P_market` into the math. Per-row value: `belief_delta_on_truth = P_AI(S_true) - P_market(S_true)`. Positive = monetizable edge; zero = no edge; negative = anti-edge. Distinguishes the three situations Layer 1 alone cannot see. Full summary in Layer 2 body below.
 - Stone 12 ⬜ — process-quality flag (did the agent update on emissions vs price)
 - Stone 13 ⬜ — decision-quality score (action vs belief, given payoff structure), including `NoAction` as first-class. Scores: (a) did the agent correctly choose `NoAction` when calibrated `belief_delta` was below cost threshold, (b) when the agent chose `TradeAction`, did the expression match the belief shape (e.g., long-vol when belief is high-uncertainty). `NoAction` is scored separately, never collapsed to `size = 0` of a `TradeAction`. The `NoAction`-correct-when-no-edge case is explicitly rewarded — DESIGN.md Operational Constraints, BIAS_PATTERNS #12 (trade-for-trade's-sake).
 - Stone 14 ⬜ — capacity-adjusted return (edge at deployable size, not nominal size)
@@ -339,19 +339,11 @@ Four conditions, all required: disagreement (gap ≠ 0), agent correct (gap posi
 
 **Why "no edge" is a typed first-class output.** Most of the time, `belief_delta ≈ 0` (agreement) or `|belief_delta| < costs`. The correct `Action(A)` is `NoAction`. The system rewards saying "no edge" accurately. BIAS_PATTERNS #12 (trade-for-trade's-sake) names the failure of an agent that always finds trades.
 
-**Runnable toy.** Three scenarios — calibrated+monetizable, calibrated+no-gap, confident+wrong+big-gap — on actual numbers, with the four primitives computed for each. Brier alone cannot distinguish them; the four-thing scoreboard can.
-
-```bash
-uv run python -m fingym.toys.four_thing_decomp
-```
-
-Source: [src/fingym/toys/four_thing_decomp.py](src/fingym/toys/four_thing_decomp.py).
-
 **What's deliberately unanswered.** Stone 7a is vocabulary. Stones 8–14 measure with it. Stone 31 (Phase 2) implements `P_market(S)` recovery from real markets. Formal symbol definitions, ranges, and properties live in [FORMULAS.md](FORMULAS.md).
 
 ---
 
-**Layer 1 — atom of inference — complete (with Stone 7a as bridge to Layer 2).** Belief, outcome, label, score signature, why-belief-not-outcome, properness, Brier, log score, four-thing decomposition. The Layer-1 scoring functions are implemented in `src/fingym/evaluator/scoring.py` (substep 4a); the four-thing decomposition is demonstrated in `src/fingym/toys/four_thing_decomp.py`. Next: **Layer 2 — the evaluator's math** (calibration curves, scoreboard assembly, multi-horizon and expression-type aggregation, plus market-delta and NoAction-first-class decision quality per v2).
+**Layer 1 — atom of inference — complete (with Stone 7a as bridge to Layer 2).** Belief, outcome, label, score signature, why-belief-not-outcome, properness, Brier, log score, four-thing decomposition. The Layer-1 scoring functions are implemented in `src/fingym/evaluator/scoring.py` (substep 4a). Next: **Layer 2 — the evaluator's math** (calibration curves, scoreboard assembly, multi-horizon and expression-type aggregation, plus market-delta and NoAction-first-class decision quality per v2).
 
 ---
 
@@ -373,7 +365,7 @@ This cannot be answered from any single prediction. It is a statistical property
 4. If claim > observed, the agent is overconfident in that group.
 5. If claim < observed, the agent is underconfident in that group.
 
-**Worked example.** Three adversarial agents, 200 binary events each (true probabilities mixed from {40%, 60%, 80%}; base rate ≈ 60%). Runnable toy: `uv run python -m fingym.toys.calibration_diagram`.
+**Worked example.** Three adversarial agents, 200 binary events each (true probabilities mixed from {40%, 60%, 80%}; base rate ≈ 60%).
 
 **Agent W (well-calibrated, says true probability):**
 
@@ -416,8 +408,6 @@ Calibration error: **7.0 pp**. One bucket. Agent has no discriminative value —
 | Uninformative | One bucket only; observed ≈ base rate | Useless even if ECE is low |
 
 **Connection to Layer 1.** Layer 1 scored P_AI on single predictions (Brier, log score per row). Stone 8 scores P_AI across many predictions. Both are about the agent's belief in isolation. Stone 11a will introduce the gap between P_AI and P_market.
-
-**Runnable toy.** [src/fingym/toys/calibration_diagram.py](src/fingym/toys/calibration_diagram.py). Try: change `true_probs = [0.4, 0.6, 0.8]` to `[0.2, 0.5, 0.8]` — base rate becomes 50%, agent U's ECE drops near zero, and U *looks* calibrated even though it has zero discrimination. That's the discrimination point made vivid.
 
 **Formal symbols.** Reference notation lives in [FORMULAS.md](FORMULAS.md) under "Calibration measurement (Stone 8)." Not needed for understanding; provided for code/agent reference.
 
@@ -641,8 +631,6 @@ Three orthogonal signals. No single column suffices. Each lights up red for a di
 - Whether the agent updated `P_AI` on emissions vs price (Stone 12 — process quality).
 
 The gap is necessary for edge; subsequent stones add the sufficient conditions.
-
-**Runnable toy.** [src/fingym/toys/market_delta_scoring.py](src/fingym/toys/market_delta_scoring.py). Five scenarios; Brier and log_score stay constant within belief-groups while Gap varies with `P_market`. Source for the worked numbers above.
 
 **One sentence.** Stone 11a adds the first scoreboard column that takes `P_market` into the calculation; per-row value is the signed gap `P_AI(S_true) - P_market(S_true)`; positive means real edge, zero means agreement (no edge), negative means anti-edge; aggregating mean gap across many predictions reveals whether the agent has systematic edge — a signal Layer 1 calibration alone cannot detect.
 

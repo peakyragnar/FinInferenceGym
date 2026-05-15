@@ -25,7 +25,7 @@ The vocabulary that distinguishes the four primitives every Layer-2 scoring deci
 
 - **What:** the agent's probability distribution over the state space — its belief.
 - **Type:** function from each possible value of `S` to a probability in `[0, 1]`. Values sum to exactly `1`.
-- **In code:** `dict[StateLiteral, float]` (see [src/fingym/toys/four_thing_decomp.py](src/fingym/toys/four_thing_decomp.py)). `BeliefDistribution` in [CONTRACT.md](CONTRACT.md).
+- **In code:** `dict[StateLiteral, float]`; `BeliefDistribution` in [CONTRACT.md](CONTRACT.md).
 - **Constraint:** Cromwell's rule (Stone 7) — do not assign probability `0` to anything not logically certain.
 
 ### `P_market(S)`
@@ -135,7 +135,7 @@ P_AI_new(h) = likelihood(evidence | h) × P_AI_old(h) / Σ_h' [ likelihood(evide
 
 ## Calibration measurement (Stone 8)
 
-Layer-2 measurement of `P_AI` calibration across many predictions. Concrete worked example with tables in [PYRAMID.md](PYRAMID.md) Stone 8 summary; runnable toy at [src/fingym/toys/calibration_diagram.py](src/fingym/toys/calibration_diagram.py).
+Layer-2 measurement of `P_AI` calibration across many predictions. Concrete worked example with tables in [PYRAMID.md](PYRAMID.md) Stone 8 summary.
 
 ### Setup
 
@@ -189,7 +189,7 @@ The reliability **table** (per-bucket gap structure) is the diagnostic; ECE is t
 
 ### In code
 
-Toy implementation: `src/fingym/toys/calibration_diagram.py`. To be lifted into `src/fingym/evaluator/` as a proper scoreboard component when substep 4b assembles the multi-column evaluator.
+Production implementation lands in `src/fingym/evaluator/` as a proper scoreboard component when substep 4b assembles the multi-column evaluator.
 
 ---
 
@@ -375,7 +375,7 @@ NoAction { decision_time: datetime, reason: str }
 
 ## Market-delta scoring (Stone 11a)
 
-The first scoreboard column that takes `P_market` into the math. Operationalizes the four-thing decomposition's monetization layer. Concrete worked example in [PYRAMID.md](PYRAMID.md) Stone 11a body and [src/fingym/toys/market_delta_scoring.py](src/fingym/toys/market_delta_scoring.py).
+The first scoreboard column that takes `P_market` into the math. Operationalizes the four-thing decomposition's monetization layer. Concrete worked example with tables in [PYRAMID.md](PYRAMID.md) Stone 11a body.
 
 ### Per-row formula
 
@@ -434,7 +434,6 @@ A candidate skill at promotion time is checked for whether it improves the mean 
 
 - `belief_delta` field on each Contract (see [CONTRACT.md](CONTRACT.md), Phase 0 substep 6 deliverable).
 - `belief_delta_on_truth` column on scoreboard row (Stone 9 schema, populated at horizon when `S_true` is revealed).
-- Toy: `src/fingym/toys/market_delta_scoring.py`.
 
 ---
 
