@@ -42,9 +42,13 @@ The maximum size at which a strategy can be deployed before its edge converges t
 
 A bandit problem where the optimal arm depends on **context** — the specific case in front of the agent. The right source for a semiconductor company differs from a software company. The agent must learn not just "which arm is best on average" but "which arm is best given **this** case."
 
+## Contract
+
+The structured terminal output an agent emits at decision time. A `Contract` is the typed object that turns unconstrained model cognition into a scoreable, market-relative, time-separated claim. Every cognitive output that the system takes seriously must take this form. The MVP spec is in [CONTRACT.md](CONTRACT.md). At minimum a `Contract` carries: `decision_time`, `evidence_ids`, `hidden_state_hypotheses`, `ai_belief` (`P_AI(S)`), `market_implied_belief` (`P_market(S)`), `belief_delta`, `horizon`, `action_or_no_action`, `recommended_size`, `falsifiers`, `label_plan`, `cognitive_audit_trail`, and (optional) `memory_update_proposal`. A model output that does not land in a `Contract` is prose, not alpha — see [BIAS_PATTERNS.md](BIAS_PATTERNS.md) #11 (narrative as evidence).
+
 ## Edge
 
-The agent's calibrated belief about the state minus the market's implied belief about the state, net of trade costs. Three conditions must all hold for edge to be real: (a) disagreement with the market, (b) calibration of the agent's stated confidence, (c) gap large enough to survive costs, slippage, and time. If any one fails, edge is zero or negative in expectation, regardless of how confident the agent feels.
+The agent's calibrated belief about the state minus the market's implied belief about the state, net of trade costs. Symbolically: `P_AI(S) − P_market(S)` net of costs. Three conditions must all hold for edge to be real: (a) disagreement with the market, (b) calibration of the agent's stated confidence, (c) gap large enough to survive costs, slippage, and time. If any one fails, edge is zero or negative in expectation, regardless of how confident the agent feels.
 
 ## Emission
 
@@ -123,11 +127,23 @@ The belief about the hidden state that the market would have to hold to produce 
 
 ## No-edge
 
-The action of declining to commit to any hypothesis. Zero expected payoff, zero expected loss, in every state. The correct default when no commit-action has positive EV after accounting for payoff asymmetry. In real markets, the well-calibrated agent's most-used action. Overconfident agents say it too rarely; underconfident agents say it too often.
+The action of declining to commit to any hypothesis. Zero expected payoff, zero expected loss, in every state. The correct default when no commit-action has positive EV after accounting for payoff asymmetry. In real markets, the well-calibrated agent's most-used action. Overconfident agents say it too rarely; underconfident agents say it too often. NO-EDGE is a **first-class output** in the system (DESIGN.md Operational Constraints) — the verifier explicitly rewards it when correct. A `Contract` whose `action_or_no_action` field carries `NoAction` is structurally equivalent to one carrying `TradeAction`; both are scored, both can be promoted into memory, and both contribute to the trajectory store.
+
+## NoEdgeContract
+
+Informal name for a `Contract` whose `action_or_no_action` field is `NoAction`. Carries the same required fields as a trade-bearing `Contract` (belief, market-implied belief, delta, falsifiers, label plan) — declining to trade is itself a typed claim that gets scored. Did the no-edge call hold up? Was the market correct that there was no opportunity? The `NoEdgeContract` is the verifier's defense against trade-for-trade's-sake (BIAS_PATTERNS.md #12).
 
 ## Observation
 
 Information available to the agent at the time it must form a belief. Evidence, not truth. Can be useful, misleading, incomplete, delayed, or contaminated by consensus.
+
+## P_AI(S)
+
+The agent's calibrated belief over the hidden state `S`, given evidence available at decision time. Symbolic shorthand for the `ai_belief` field of a `Contract`. One of the four objects in the four-thing decomposition (DESIGN.md Architectural Physics). Honest only when the underlying belief is calibrated; produced by the model, scored by the evaluator.
+
+## P_market(S)
+
+The market-implied belief over the hidden state `S`, recovered from observable market emissions: price, options chain, implied volatility, analyst estimate distributions, credit spreads, short interest, factor exposures. Symbolic shorthand for the `market_implied_belief` field of a `Contract`. Recovered by inverting the market's pricing machinery (Stone 31 — market-implied belief recovery). The system's most useful "second opinion." One of the four objects in the four-thing decomposition.
 
 ## Payoff structure
 
@@ -156,6 +172,10 @@ A scoring rule with the property that, on average, the way to maximize your scor
 ## Realized volatility
 
 The standard deviation of past price returns over a specified window. A statistic computed from past emissions — a description of how the price actually moved. Distinct from implied volatility, which is a forward-looking emission of the market's belief.
+
+## S_true
+
+The actual hidden state of the company / world. Unobservable in real markets; revealed only through future emissions and never with certainty. In toy worlds, `S_true` is known to the evaluator (which is why toys exist). One of the four objects in the four-thing decomposition (DESIGN.md Architectural Physics). The agent forms `P_AI(S)` as its belief about `S_true`; the evaluator later scores `P_AI(S)` against labels constructed from observed proxies for `S_true`.
 
 ## Reflexivity
 

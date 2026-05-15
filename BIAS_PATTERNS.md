@@ -122,6 +122,18 @@ When you recognize a pattern below in a current proposal, **name it and refuse**
 
 ---
 
+## 12. Trade-for-trade's-sake
+
+**Failure mode**: An agent that always proposes a `TradeAction` rather than declaring `NoAction`. The system pays compute to think; the model "rewards" the compute with a trade output every time, regardless of whether the disagreement is actually monetizable after costs. The result is overtrading — many small "edges" that, in aggregate, transfer wealth to brokers and the market. The model has internalized the implicit prompt "produce a trade" rather than "produce honest inference, including the inference that no trade is warranted."
+
+**Example status**: Anticipated. Will surface as soon as we read agent output at scale (Phase 2+) — particularly under prompt structures that frame the task as "find a trade" rather than "form a belief." The structural defense exists in the contract format (`NoAction` is a typed alternative to `TradeAction`, not a degenerate case), but defenses fail when the model is not held to using them.
+
+**Principle violated**: DESIGN.md Operational Constraints — NO-EDGE is a first-class output. A system that always finds trades is broken.
+
+**Standing response**: The verifier explicitly rewards `NoAction` calls when no expression has positive expected log-growth-after-costs. An agent's no-edge rate is tracked on the scoreboard alongside calibration. An implausibly low no-edge rate (under, say, 30% in a broad analytical universe) is flagged. The CONTRACT.md format treats `NoEdgeContract` as structurally equivalent to a trade-bearing contract — same required fields, same scoring. When prompted to "find an opportunity," the correct response from a calibrated model is often "the disagreement here doesn't clear costs; no edge." Compute should produce no-edge calls as readily as edge calls; the absence of edge is informative.
+
+---
+
 ## Disposition when these patterns appear
 
 1. **Recognize the pattern.** Look it up in this file or DECISIONS.md.

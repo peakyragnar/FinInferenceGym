@@ -181,6 +181,44 @@ Every entry: **what was proposed → why rejected → principle / commitment inv
 
 ---
 
+## Constitution tightening v2 (2026-05)
+
+- **Context**: Following Michael's second design synthesis (the "AI cognition + EdgeContract" review), five concrete tightenings landed before substep 4 (evaluator v0). The synthesis's central insight — *"no cognitive output matters unless it becomes a structured, point-in-time, market-relative, economically expressible, future-scored contract"* — is the bridge from "AI thinks freely" to "we make money." That bridge is the structured terminal output object. We are still in the design-before-build phase; tightenings here cost less than tightenings after code lands. Claude's prior recommendation to defer most items to phase-gate was over-applied — for pure-design changes there is no data to wait for. Recalibrated to land all design-pure items now; only the VOI computation mechanism stays deferred (the data-capture requirement lands now).
+
+- **Decision** (five coordinated changes):
+  1. **Four-thing decomposition vocabulary.** Added `S_true`, `P_AI(S)`, `P_market(S)`, `Action(A)` as load-bearing vocabulary. Lives canonically in [DEFINITIONS.md](DEFINITIONS.md); DESIGN.md "Architectural Physics" introduces the decomposition in a table and the load-bearing claim that money lives in the gap between `P_AI(S)` and `P_market(S)` only when `Action(A)` monetizes the disagreement after costs.
+  2. **DESIGN.md commitment #2 sharpened.** Extended "Belief is over hidden state" with the price-as-adversarial-belief framing: the agent infers state AND infers what the market believes about state; the system monetizes the gap, not the absolute belief. A perfectly calibrated belief that the market also holds produces no edge.
+  3. **NO-EDGE elevated to a DESIGN.md Operational Constraint.** Previously a BUILD.md mention. Now structurally first-class: the verifier explicitly rewards `NoAction` calls when no expression has positive expected log-growth-after-costs. An agent whose no-edge rate is implausibly low is flagged (BIAS_PATTERNS.md #12). The contract format treats `NoAction` as a typed alternative to `TradeAction`, not a degenerate case.
+  4. **CONTRACT.md created** ([CONTRACT.md](CONTRACT.md)). MVP spec for the structured terminal output every agent emits. Required fields buildable at Phase 0 substep 6: `decision_time`, `evidence_ids`, `hidden_state_hypotheses`, `ai_belief`, `market_implied_belief`, `belief_delta`, `horizon`, `action_or_no_action`, `recommended_size`, `falsifiers`, `label_plan`, `cognitive_audit_trail`, `memory_update_proposal`. Deferred fields (cost_model, slippage_model, payoff_distribution, capacity_estimate, etc.) listed with explicit Phase triggers. Same MVP-then-defer pattern as memory-design.md.
+  5. **PYRAMID.md Stone 11a + Stone 19 sharpening + BIAS_PATTERNS #12.** New Stone 11a in Layer 2: market-delta scoring (the agent's belief minus market-implied belief, scored against realized payoff). Without it the scoreboard cannot distinguish "well-calibrated but no edge" from "well-calibrated AND edge." Stone 19 (model interface contract) sharpened to point at CONTRACT.md and list required vs deferred fields. New BIAS_PATTERNS #12 "trade-for-trade's-sake" — the failure mode of an agent that always proposes a trade rather than declaring no-edge.
+
+- **Naming convention adopted**: Stone IDs are permanent and never renumbered. Insertions get letter suffixes (Stone 11a, etc.). This avoids cascading reference breakage when stones are added — the v1 DECISIONS.md entry that references "PYRAMID.md Stone 23" stays valid.
+
+- **VOI for compute — split decision**: The data-capture requirement (`cognitive_audit_trail` field on every Contract, with one entry per cognitive iteration) lands NOW as a required field of CONTRACT.md, because the trajectory store needs to start capturing the trail from day 1 for Phase 4 to have data to consume. The mechanism that COMPUTES VOI from the trail (per-agent cost vs decision-changes analysis) is genuinely Phase 4 work and stays deferred — it requires the population mechanic and per-agent cost data, neither of which exists at Phase 0.
+
+- **Pushbacks recorded** (claims Claude argued against in the v2 review and Michael accepted):
+  - Adopting the synthesis's 11-numbered-step prompt skeleton was rejected as BIAS_PATTERNS #8 (narrowing the model interface). The contract object IS the constraint; the model decides its own internal reasoning sequence.
+  - Adopting the synthesis's 7-stage funnel as a model-side workflow was rejected for the same reason. The funnel is reframed as system-side gates (validate → score → promote), not as model-side reasoning steps.
+  - Creating a separate `COGNITION_AND_VERIFICATION_DOCTRINE.md` doc was rejected as source-of-truth fragmentation. The substantive claims from the synthesis's 10 doctrine principles are absorbed into existing docs (DESIGN.md, CONTRACT.md, BIAS_PATTERNS.md) rather than spawning a fourth source-of-truth.
+  - Building the synthesis's full EdgeContract schema (with cost models, slippage models, capacity, payoff distributions baked in NOW) was rejected as over-engineering at Phase 0. The MVP CONTRACT.md spec covers the Phase 0 evaluator's needs; advanced fields are listed as deferred with explicit triggers.
+
+- **Pushback Claude made initially and reversed**: Claude initially recommended deferring most v2 items to the substep-8 phase-gate audit on the grounds that "doing v2 immediately makes the constitution look unstable." Michael correctly pointed out this conflated optics with substance — for pure-design changes that are cheaper to land before build than after, the deferral discipline was over-applied. Recalibrated.
+
+- **What does NOT change**: The 10 commitments. Phase 0 next action (substep 4: evaluator v0 + 3-state synthetic-market toy). The teaching cadence (concept-in-PYRAMID-then-code). The repo structure. The mechanism layer (no new lints in v2).
+
+- **Files touched**: CLAUDE.md, DESIGN.md, TECHNICAL.md, DEFINITIONS.md, PYRAMID.md, BIAS_PATTERNS.md, CONTRACT.md (new), this file, PROGRESS.md.
+
+- **Mechanism additions**: None. The v1 lint (`no_alpha_features.py`) plus the existing two cover what's structurally enforceable. The contract spec is enforced by the type system once `src/fingym/agents/contract.py` ships in substep 6. The four-thing decomposition is vocabulary; it doesn't admit a clean lint pattern. Trade-for-trade's-sake (BIAS_PATTERNS #12) is detected at the scoreboard, not at the lint layer.
+
+- **Principle**: DESIGN.md #2 (belief over hidden state, sharpened), #5 (cognition / verification boundary at the contract object), #6 (raw evidence in, structured contract out), Operational Constraints (NO-EDGE first-class). Plus the project's "mechanisms over prompts" — the contract spec without code enforcement (the pydantic model in substep 6) is load-bearing prose; the spec PLUS the validator is enforceable.
+
+- **Forward implications for substep 4 (evaluator v0)**:
+  - The evaluator must support multi-horizon scoring on a parameterizable horizon set (not hardcoded), with market-delta scoring (Stone 11a) as a column on the scoreboard.
+  - The 3-state synthetic-market toy (Stone 15) must include a market participant with its own belief, so the evaluator can score `belief_delta` in toy world.
+  - The evaluator must score `NoAction` calls separately from `TradeAction` calls (not collapse them to size = 0).
+
+---
+
 ## Disposition guidance
 
 When a new session encounters a proposal that matches anything in this file:

@@ -33,7 +33,7 @@ Non-negotiable. Every architectural choice is downstream of these. If any one is
 Not the model. Not the strategy. Everything else is replaceable; the evaluator is not.
 
 ### 2. Belief is over hidden state, not over outcomes.
-The agent infers state; the evaluator scores against time-revealed labels.
+The agent infers state; the evaluator scores against time-revealed labels. **The agent ALSO infers what the market believes about state** — `P_market(S)` recovered from price, options, estimates, spreads. The system monetizes the gap `P_AI(S) − P_market(S)`, not the absolute belief. Price is the opponent's compressed belief, not truth: a perfectly calibrated belief that the market also holds produces no edge; only a calibrated belief that the market does not hold AND that translates into a tradable expression produces compound growth.
 
 ### 3. Time is a one-way valve.
 Point-in-time discipline is absolute. Information flows forward to the evaluator, never backward to the agent.
@@ -91,6 +91,19 @@ The mathematical/structural constants the system cannot deviate from.
 - **Conservation of probability.** Beliefs sum to 1. No belief is exactly 0 or 1 unless logically certain (Cromwell's rule).
 
 DCF, fundamental valuation, and other classical finance frameworks are **strong priors**, not architecture. They often hold and frequently fail. The system uses them where they apply and discovers when they don't.
+
+### The four-thing decomposition
+
+Every position in the system separates four distinct objects (formal definitions in [DEFINITIONS.md](DEFINITIONS.md)):
+
+| Symbol | What it is |
+|---|---|
+| `S_true` | The actual hidden state of the company / world. Unobservable; revealed only through future emissions. |
+| `P_AI(S)` | The agent's calibrated belief over hidden state, given evidence available at decision time. |
+| `P_market(S)` | The market-implied belief over hidden state, recovered from price + options + estimates + spreads. |
+| `Action(A)` | A tradable expression chosen from the action space (equity / options / vol / pair / NO-EDGE). |
+
+The system makes money in the gap between `P_AI(S)` and `P_market(S)` *only when* an `Action(A)` exists whose payoff distribution monetizes that disagreement after costs, slippage, financing, borrow, taxes, liquidity, and sizing error. **A differentiated belief alone is worthless.** A calibrated belief that the market shares is also worthless. The full chain — calibrated `P_AI`, recoverable `P_market`, monetizable `Action`, sized under uncertainty — is what makes this project distinct from a calibration academic exercise.
 
 ---
 
@@ -195,6 +208,7 @@ Rules for how we operate inside the architecture.
 - **No paper trading.** Live performance scored against time-revealed labels. The market is the production environment.
 - **Michael is the auditor, not the training signal.** His discretionary trading is unrelated to the system's evaluation. The 4-quadrant comparison matrix (agreement / disagreement / over- under-confidence relative to Michael) is rejected.
 - **No bias-import.** Every constraint introduced into the architecture must be defensible from first principles or explicitly logged as a working assumption to be retested.
+- **NO-EDGE is a first-class output.** A system that always finds trades is broken. The verifier explicitly rewards "no edge" calls when no expression has positive expected log-growth-after-costs. Compute should produce no-edge calls as readily as edge calls; the absence of edge is informative. An agent whose no-edge rate is implausibly low is flagged as overtrading (BIAS_PATTERNS.md #12 — trade-for-trade's-sake). The contract format treats `NoAction` as a typed alternative to `TradeAction`, not as a degenerate case.
 
 ### Structural exclusions (not preferences)
 

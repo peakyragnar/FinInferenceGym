@@ -67,16 +67,17 @@ The complete plan, by layer. Stones taught and committed are marked **✅**; sto
 - Stone 9 ⬜ — scoreboard assembly (multi-column data structure holding parallel scoring functions)
 - Stone 10 ⬜ — multi-horizon scoring (1m / 3m / 6m / 1y in parallel)
 - Stone 11 ⬜ — expression-type tagging (action-space-aware scoring; equity / option / vol / pair / no-edge)
+- Stone 11a ⬜ — market-delta scoring (the agent's belief minus market-implied belief, scored against realized payoff). Distinguishes "well-calibrated but no edge" from "well-calibrated AND edge." Without this, the scoreboard cannot tell a calibrated agent that agrees with the market apart from a calibrated agent that monetizably disagrees. Operates on the `belief_delta` field of a `Contract` (see [CONTRACT.md](CONTRACT.md)). At Phase 0 the toy provides `P_market`; at Phase 2 the recovery mechanism (Stone 31) provides it for real markets.
 - Stone 12 ⬜ — process-quality flag (did the agent update on emissions vs price)
 - Stone 13 ⬜ — decision-quality score (action vs belief, given payoff structure)
 - Stone 14 ⬜ — capacity-adjusted return (edge at deployable size, not nominal size)
 
 ### Layer 3 — Evaluator validated on toys ⬜ (Phase 0, substeps 5–8)
-- Stone 15 ⬜ — the 3-state synthetic company toy (known ground truth, second fixture beyond the coin)
+- Stone 15 ⬜ — the synthetic-market toy (hidden company state + market participant with its own belief + evidence stream that imperfectly informs both; second fixture beyond the coin). Exercises the full pipeline `P_AI(state) → P_market(state) → action → score` in toy world where the evaluator knows true state, true future path, AND the market's actual belief. Without a market in the toy, we cannot distinguish "agent calibrated about state but market also calibrated (no edge)" from "agent calibrated about state and market mispriced (real edge)" — and that distinction is what the project monetizes.
 - Stone 16 ⬜ — adversarial agents (confidently-wrong, always-50%, well-calibrated)
 - Stone 17 ⬜ — validating the evaluator ranks the adversaries correctly on every scoreboard dimension
 - Stone 18 ⬜ — reliability diagrams as visual artifacts; the Phase 0 exit criterion
-- Stone 19 ⬜ — the model interface contract (typed Protocol: raw evidence → structured terminal output) — scaffolding for Layer 5
+- Stone 19 ⬜ — the model interface contract (typed Protocol: raw evidence → structured `Contract` object, spec'd in [CONTRACT.md](CONTRACT.md)). Required fields at Phase 0: decision_time, evidence_ids, hidden_state_hypotheses, ai_belief, market_implied_belief (toy), belief_delta, horizon, action_or_no_action, recommended_size, falsifiers, label_plan, cognitive_audit_trail, memory_update_proposal. Deferred fields (cost, slippage, capacity, payoff_distribution, expected_log_growth_after_costs) ship with Phase 2+ machinery. Scaffolding for Layer 5.
 - Stone 20 ⬜ — the memory artifact schema (versioned, model-readable, horizon/expression-tagged) — scaffolding for Layer 7
 - Stone 21 ⬜ — property tests for math invariants (Bayes commutativity, Kelly monotonicity, Brier/log properness)
 

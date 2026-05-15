@@ -48,6 +48,14 @@ Plus operational tables:
 
 Memory artifacts live as **YAML files in `memory_registry/` in git** — versioned via git for audit history, not in Postgres. This is deliberate: skill provenance and human review benefit from git's diff/blame history. The full memory architecture (four-tier L0-L3 pyramid, schema, promotion gate, deferral list, and the research that produced it) is documented in **[memory-design.md](memory-design.md)**. This section gives only the engineering pointers; the architectural decisions live there.
 
+## Model interface contract
+
+The structured terminal output that every agent emits is the `Contract` object spec'd in **[CONTRACT.md](CONTRACT.md)**. The pydantic model lives in `src/fingym/agents/contract.py` (Phase 0 substep 6 deliverable). The validator (`src/fingym/agents/contract_validator.py`) enforces the required-field constraints listed in CONTRACT.md "Validation."
+
+A model output that does not land in a valid `Contract` is rejected at the verifier gate, not scored, and recorded as a verifier-rejection in the operational log. This is the code-level enforcement of DESIGN.md #5 (cognition / verification boundary) at the agent boundary.
+
+The trajectory store (per DESIGN.md #8) writes one row per `Contract` with full provenance and the `cognitive_audit_trail` field preserved. The trail captures (initial belief, additional reasoning iterations, updated belief, action change) per cognitive step, which the Phase 4 VOI mechanism reads to compute "did more thinking change the action?" Capturing the trail is a Phase 0 design requirement; the VOI mechanism that consumes it is Phase 4.
+
 ## LLM swap layer
 
 `src/fingym/llm/` wraps all model providers behind a typed model-interface contract (DESIGN.md #7):

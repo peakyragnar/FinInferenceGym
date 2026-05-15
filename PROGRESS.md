@@ -8,7 +8,7 @@ Current build status. Updated at the end of every working session.
 
 **Phase 0 — Evaluator + Model Interface Contract + Toys (Weeks 1–2)**
 
-Status: **in progress** — substeps 1–3 complete (scaffolding, Neon database, coin toy migrated). Substep 4a partial (Brier + log score in `src/fingym/evaluator/scoring.py`). Constitution tightening v1 landed (see DECISIONS.md): `derived_features` → `derived_evidence` rename, physics-not-alpha sharpening, trajectory-as-audit-object clarification, BIAS_PATTERN #11, new `no_alpha_features.py` lint (15 pre-commit hooks total).
+Status: **in progress** — substeps 1–3 complete (scaffolding, Neon database, coin toy migrated). Substep 4a partial (Brier + log score in `src/fingym/evaluator/scoring.py`). Constitution tightening v1 landed (see DECISIONS.md): `derived_features` → `derived_evidence` rename, physics-not-alpha sharpening, trajectory-as-audit-object clarification, BIAS_PATTERN #11, new `no_alpha_features.py` lint (15 pre-commit hooks total). Constitution tightening v2 landed (see DECISIONS.md): four-thing decomposition vocabulary, DESIGN.md #2 sharpened with price-as-adversarial-belief, NO-EDGE elevated to Operational Constraint, [CONTRACT.md](CONTRACT.md) created (MVP spec for structured terminal output), PYRAMID Stone 11a (market-delta scoring) + Stone 19 sharpened, BIAS_PATTERN #12 (trade-for-trade's-sake), Stone-numbering convention (letter suffixes for insertions, no renumbering).
 
 See [BUILD.md](BUILD.md#phase-0--evaluator--model-interface-contract--toys-weeks-12) for full phase definition (teaching, build, design cross-reference, exit criterion, slippage watch).
 
@@ -46,7 +46,7 @@ See [BUILD.md](BUILD.md#phase-0--evaluator--model-interface-contract--toys-weeks
 
 ## Next Action
 
-Next: **substep 4 — build the evaluator v0 in `src/fingym/evaluator/`** (Brier, log score, calibration curve, process-quality flag, decision-quality, capacity-adjusted return; multi-horizon scoring; action-space-aware expression_type tagging) **and the 3-state synthetic company toy**.
+Next: **substep 4 — build the evaluator v0 in `src/fingym/evaluator/`** (Brier, log score, calibration curve, **market-delta scoring (Stone 11a)**, process-quality flag, decision-quality, capacity-adjusted return; multi-horizon scoring on a parameterizable horizon set, **not hardcoded**; action-space-aware expression_type tagging; **NoAction scored separately from TradeAction**) **and the 3-state synthetic-market toy** (Stone 15 — must include a market participant with its own belief so `belief_delta` can be scored in toy world).
 
 Phase 0 Week 1 substeps, in order:
 

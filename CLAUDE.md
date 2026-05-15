@@ -22,6 +22,7 @@ For project ethos, see [AGENTS.md](AGENTS.md). For architectural commitments, se
 - **[PROGRESS.md](PROGRESS.md)** — current phase status, checklist, next action. **Source of truth for "where are we right now."** Updated at the end of every working session.
 - **[PYRAMID.md](PYRAMID.md)** — running teaching state. Each conceptual stone of the build is taught here in plain language **before** the code lands. Load alongside PROGRESS.md to see *what's been explained* in addition to *where we are*. Auditability requires it.
 - **[memory-design.md](memory-design.md)** — committed memory architecture (four-tier L0-L3 pyramid, promotion gate, git-backed YAML), the deferral list with revisit triggers, and the research evaluated. Source of truth for everything memory-related; expansion of TECHNICAL.md's memory section.
+- **[CONTRACT.md](CONTRACT.md)** — MVP spec for the structured terminal output every agent emits (the `Contract` object). Required fields, deferred-field list with triggers, validation rules. Source of truth for the model interface contract; companion to memory-design.md.
 - **[DECISIONS.md](DECISIONS.md)** — log of alternatives proposed and rejected. Do not re-litigate.
 - **[BIAS_PATTERNS.md](BIAS_PATTERNS.md)** — specific bias-smuggling patterns to challenge aggressively when they reappear.
 - **[AGENTS.md](AGENTS.md)** — minimal pointer file (for non-Claude agents). Just routes to CLAUDE.md.
@@ -43,9 +44,10 @@ When starting a new session (new context window), before producing any non-trivi
 4. Read **[PROGRESS.md](PROGRESS.md)**. This is the source of truth for current phase.
 5. Read **[PYRAMID.md](PYRAMID.md)** in full. This is the running teaching state — what's been explained to Michael in plain language so far, and what the next conceptual stone is. The build cadence is concept-in-PYRAMID-then-code; do not skip ahead.
 6. Read **[memory-design.md](memory-design.md)** in full. The committed memory architecture, the deferral list, and the research evaluated. Substantive — do not skip even if the current substep is not memory-specific, because memory decisions constrain agent design upstream.
-7. Read **[DECISIONS.md](DECISIONS.md)** in full. Rejected alternatives.
-8. Read **[BIAS_PATTERNS.md](BIAS_PATTERNS.md)** in full. Named failure modes to challenge.
-9. Re-read the slippage watches for the current phase in BUILD.md.
+7. Read **[CONTRACT.md](CONTRACT.md)** in full. The structured terminal output every agent emits. Substantive — agent-design and evaluator-design both depend on the contract spec.
+8. Read **[DECISIONS.md](DECISIONS.md)** in full. Rejected alternatives.
+9. Read **[BIAS_PATTERNS.md](BIAS_PATTERNS.md)** in full. Named failure modes to challenge.
+10. Re-read the slippage watches for the current phase in BUILD.md.
 
 Then summarize back: 10 commitments, current phase + next action, slippage watches, 3 most relevant DECISIONS.md / BIAS_PATTERNS.md entries. Do not propose, plan, or expand scope until Michael confirms the summary is accurate.
 
@@ -66,9 +68,9 @@ Slippage from DESIGN.md is the single biggest project risk during build. Restori
 
 ## Bias-Smuggling Patterns
 
-Eleven specific patterns, with the named examples that occurred during design and the standing response for each, live in [BIAS_PATTERNS.md](BIAS_PATTERNS.md). Read it once at session start. When you see a pattern reappearing, **name it and refuse**.
+Twelve specific patterns, with the named examples that occurred during design and the standing response for each, live in [BIAS_PATTERNS.md](BIAS_PATTERNS.md). Read it once at session start. When you see a pattern reappearing, **name it and refuse**.
 
-The patterns: thematic-prior-disguised-as-scope, personal-preference-disguised-as-scope, prestigious-framework-because-prestigious, human-in-the-loop-as-diagnostic, strong-prior-disguised-as-physics, single-model-lock-in, "just for now," narrowing-the-model-interface, buffet-answers, scope-expansion-without-reason, narrative-as-evidence.
+The patterns: thematic-prior-disguised-as-scope, personal-preference-disguised-as-scope, prestigious-framework-because-prestigious, human-in-the-loop-as-diagnostic, strong-prior-disguised-as-physics, single-model-lock-in, "just for now," narrowing-the-model-interface, buffet-answers, scope-expansion-without-reason, narrative-as-evidence, trade-for-trade's-sake.
 
 ---
 
