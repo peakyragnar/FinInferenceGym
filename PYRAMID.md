@@ -61,15 +61,16 @@ The complete plan, by layer. Stones taught and committed are marked **✅**; sto
 - Stone 5 ✅ — what makes a scoring rule "proper"
 - Stone 6 ✅ — the Brier score, formula and properties
 - Stone 7 ✅ — the log score, formula and Cromwell
+- Stone 7a ⬜ — **the four-thing decomposition** (bridge from Layer 1 to Layer 2). Vocabulary: `S_true` (the actual hidden state), `P_AI(S)` (the agent's belief), `P_market(S)` (the market's belief, recoverable from price/options/spreads), `Action(A)` (the action that monetizes the gap). Layer 1 scored a belief in isolation; Layer 2 scores beliefs in relation to a competing believer. **Money lives in the gap between `P_AI(S)` and `P_market(S)` only when an `Action(A)` exists whose payoff distribution monetizes that disagreement after costs.** This vocabulary is the foundation for Stones 8–14 and the contract spec ([CONTRACT.md](CONTRACT.md)); without it, "well-calibrated" gets confused with "has edge." Anchored in [DESIGN.md](DESIGN.md) Architectural Physics and [DEFINITIONS.md](DEFINITIONS.md).
 
 ### Layer 2 — The evaluator's math ⬜ (Phase 0, substep 4b/4c)
 - Stone 8 ⬜ — calibration curves and reliability diagrams
 - Stone 9 ⬜ — scoreboard assembly (multi-column data structure holding parallel scoring functions)
 - Stone 10 ⬜ — multi-horizon scoring (1m / 3m / 6m / 1y in parallel)
-- Stone 11 ⬜ — expression-type tagging (action-space-aware scoring; equity / option / vol / pair / no-edge)
+- Stone 11 ⬜ — expression-type tagging within `TradeAction` (action-space-aware scoring; equity-long / equity-short / option-call / option-put / option-spread / option-straddle / vol-long / vol-short / pair). `NoAction` is a typed peer of `TradeAction`, not a sub-type of it — handled by Stone 13, not folded in here.
 - Stone 11a ⬜ — market-delta scoring (the agent's belief minus market-implied belief, scored against realized payoff). Distinguishes "well-calibrated but no edge" from "well-calibrated AND edge." Without this, the scoreboard cannot tell a calibrated agent that agrees with the market apart from a calibrated agent that monetizably disagrees. Operates on the `belief_delta` field of a `Contract` (see [CONTRACT.md](CONTRACT.md)). At Phase 0 the toy provides `P_market`; at Phase 2 the recovery mechanism (Stone 31) provides it for real markets.
 - Stone 12 ⬜ — process-quality flag (did the agent update on emissions vs price)
-- Stone 13 ⬜ — decision-quality score (action vs belief, given payoff structure)
+- Stone 13 ⬜ — decision-quality score (action vs belief, given payoff structure), including `NoAction` as first-class. Scores: (a) did the agent correctly choose `NoAction` when calibrated `belief_delta` was below cost threshold, (b) when the agent chose `TradeAction`, did the expression match the belief shape (e.g., long-vol when belief is high-uncertainty). `NoAction` is scored separately, never collapsed to `size = 0` of a `TradeAction`. The `NoAction`-correct-when-no-edge case is explicitly rewarded — DESIGN.md Operational Constraints, BIAS_PATTERNS #12 (trade-for-trade's-sake).
 - Stone 14 ⬜ — capacity-adjusted return (edge at deployable size, not nominal size)
 
 ### Layer 3 — Evaluator validated on toys ⬜ (Phase 0, substeps 5–8)
