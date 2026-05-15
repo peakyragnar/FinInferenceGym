@@ -40,7 +40,7 @@ The system is built up in layers. Each layer rests on the one below. A wrong lay
 
 **Infrastructure** (below the pyramid line) is not part of the project itself — it is the ground the pyramid stands on. Tooling gate (mypy strict, ruff, custom design lints, pre-commit), data substrate (Postgres 17 on Neon, alembic migrations), and the mechanism layer that enforces DESIGN.md at the code level. Built in Phase 0 substeps 1–2.
 
-**Current position:** Layer 1 (atom of inference) complete — Stones 1 through 7 taught and committed; both canonical proper scoring rules (Brier, log score) implemented in `src/fingym/evaluator/scoring.py`. Ready to start Layer 2 (the evaluator's math).
+**Current position:** Layers 1 and 2 complete. Stones 1–7 (atom of inference), 7a (four-thing decomposition bridge), 8–14 (evaluator's math: calibration, scoreboard, multi-horizon, expression-type, market-delta, process-quality, decision-quality with NoAction as peer, capacity-adjusted return) all taught and distilled. Next: **Layer 3 — evaluator validated on toys** (Stones 15–21, Phase 0 substeps 5–8): synthetic-market toy, adversarial agents, evaluator validation, reliability diagrams as visual exit criterion, model interface contract, memory artifact schema, property tests. Phase 0 exit is at the end of Layer 3.
 
 ---
 
@@ -69,9 +69,9 @@ The complete plan, by layer. Stones taught and committed are marked **✅**; sto
 - Stone 10 ✅ — multi-horizon scoring (1m / 3m / 6m / 1y in parallel; horizon set is parameterizable, not hardcoded). Same decision time produces one Contract per horizon; each scored independently. The `horizon` column on the scoreboard enables per-horizon slicing for aggregation, per-horizon held-out replay at promotion, and per-horizon domain-of-validity tagging on promoted skills. Full summary in Layer 2 body below.
 - Stone 11 ✅ — expression-type tagging within `TradeAction`. Same belief can be expressed many ways (equity-long, option-call, option-spread, vol-long, pair, etc.) with different payoff structures. The scoreboard carries `expression_type` as the broad category; specific trade details (strike, expiration, size, premium) live inside the `TradeAction` object on the Contract. Per-expression-type promotion gate. `NoAction` is a typed peer, not folded here. Full summary in Layer 2 body below.
 - Stone 11a ✅ — market-delta scoring. The first scoreboard column that takes `P_market` into the math. Per-row value: `belief_delta_on_truth = P_AI(S_true) - P_market(S_true)`. Positive = monetizable edge; zero = no edge; negative = anti-edge. Distinguishes the three situations Layer 1 alone cannot see. Full summary in Layer 2 body below.
-- Stone 12 ⬜ — process-quality flag (did the agent update on emissions vs price)
-- Stone 13 ⬜ — decision-quality score (action vs belief, given payoff structure), including `NoAction` as first-class. Scores: (a) did the agent correctly choose `NoAction` when calibrated `belief_delta` was below cost threshold, (b) when the agent chose `TradeAction`, did the expression match the belief shape (e.g., long-vol when belief is high-uncertainty). `NoAction` is scored separately, never collapsed to `size = 0` of a `TradeAction`. The `NoAction`-correct-when-no-edge case is explicitly rewarded — DESIGN.md Operational Constraints, BIAS_PATTERNS #12 (trade-for-trade's-sake).
-- Stone 14 ⬜ — capacity-adjusted return (edge at deployable size, not nominal size)
+- Stone 12 ✅ — process-quality flag (narrow form). Single mechanical check per update: was there an emission (transcript, filing, fundamental release, news event) with `as_known` in the time window before this update? If yes, `motivated`. If no, `unmotivated` — agent updated with nothing new in the world to react to. Per-agent aggregate `unmotivated_update_rate`; promotion gate caps it (initial value: 10%). Does NOT attempt to judge WHICH evidence the agent used when both emission and price are present — that distinction collapses in reality because price IS the market's update on the emission. The sophisticated price-tracker that waits for an emission then mirrors the market is caught by Stone 11a (`belief_delta_on_truth ≈ 0` by construction), not by Stone 12. Full summary in Layer 2 body below.
+- Stone 13 ✅ — decision-quality score with `NoAction` as first-class peer. Three coherence checks on the action vs the inputs (belief, gap, costs) at decision time: **threshold-match** (trade iff gap > cost), **direction-match** (trade is on the right side of the gap), **expression-match** (expression type fits belief shape). Each Contract gets a coherence verdict and three independently stored sub-flags. `decision_quality_rate` is a scoreboard column, NOT a hard cap — incoherent decisions can be legitimate (crowding, hedging, atypical vol pricing) and the promotion gate weighs the column alongside `belief_delta` and held-out return. The lazy agent (always NoAction) is caught by combining with Stone 11a (near-zero mean gap). Full summary in Layer 2 body below.
+- Stone 14 ✅ — capacity-adjusted return. Per-Contract `realized_edge = nominal_edge − spread − commission − market_impact(size, ADV) − alpha_decay`. Square-root law for impact: impact grows with `sqrt(size / ADV)`. Aggregated as `mean_realized_edge` and the diagnostic ratio `realized_to_nominal`. Sliced primarily by **deployable size bucket** — different agents have different capacity profiles, and the gate evaluates per-size, not just per-aggregate. Column on scoreboard, NOT a hard cap (capacity is niche-specific) — with one near-tautological structural check: realized edge at the agent's stated size must be positive (otherwise it's not edge, it's a losing strategy). Full summary in Layer 2 body below.
 
 ### Layer 3 — Evaluator validated on toys ⬜ (Phase 0, substeps 5–8)
 - Stone 15 ⬜ — the synthetic-market toy (hidden company state + market participant with its own belief + evidence stream that imperfectly informs both; second fixture beyond the coin). Exercises the full pipeline `P_AI(state) → P_market(state) → action → score` in toy world where the evaluator knows true state, true future path, AND the market's actual belief. Without a market in the toy, we cannot distinguish "agent calibrated about state but market also calibrated (no edge)" from "agent calibrated about state and market mispriced (real edge)" — and that distinction is what the project monetizes.
@@ -442,6 +442,19 @@ That's it. A spreadsheet of evaluation results.
 
 That's three columns with three thresholds. The collapse rule is written down. The scoreboard itself stays decomposed. From intuitions.md #2: "Collapse to a scalar only at decision points, and make the collapse rule explicit."
 
+**Column-on-scoreboard vs hard-cap-on-column — the default and the exception.**
+
+When a new scoring metric is added, the default is: it becomes a **column** that the promotion gate weighs alongside other columns. A weak number on one column can be redeemed by strong numbers elsewhere; the gate is the combination rule, not any single column.
+
+A **hard cap** (the metric must be above/below a fixed number, or the agent is rejected outright regardless of other scores) is a stronger move. It says: there is no compensating virtue for failing this metric. Reserve hard caps for the narrow case where this is genuinely true.
+
+Two worked examples from Layer 2:
+
+- Stone 12's `unmotivated_update_rate` — hard-capped at 0.10. There is no compensating virtue for "agent issued an update with no new evidence in the world." It's price-following structurally, and no amount of good output redeems it.
+- Stone 13's `decision_quality_rate` — column, NOT a hard cap. An incoherent-looking decision can be legitimate (crowding, hedging, atypical vol pricing) because the three mechanical coherence checks don't model every real factor. The gate considers it alongside `belief_delta` and held-out return; an agent can score modestly on Stone 13 and still be the right one to promote if its other columns are strong.
+
+The shape of the question for any new metric: "Is there ANY legitimate reason an agent might score poorly on this and still be a better agent than one that scores well?" If yes → column. If no → hard cap is on the table.
+
 **How Stones 10–14 use this scoreboard:**
 
 - Stone 10 (multi-horizon) — adds a `horizon` column; runs aggregations per horizon slice.
@@ -633,6 +646,261 @@ Three orthogonal signals. No single column suffices. Each lights up red for a di
 The gap is necessary for edge; subsequent stones add the sufficient conditions.
 
 **One sentence.** Stone 11a adds the first scoreboard column that takes `P_market` into the calculation; per-row value is the signed gap `P_AI(S_true) - P_market(S_true)`; positive means real edge, zero means agreement (no edge), negative means anti-edge; aggregating mean gap across many predictions reveals whether the agent has systematic edge — a signal Layer 1 calibration alone cannot detect.
+
+### Stone 12 — process-quality flag (narrow form)
+
+**Why this stone exists.** Stones 6–11a measure WHAT the agent produced — its belief, its gap from the market, its action. None fires at update time, before the horizon closes; all need an outcome to score against. Stone 12 fires the moment the agent emits an update and asks one mechanical question that doesn't need the outcome: **was there anything new in the world for the agent to react to?**
+
+**The failure mode being defended.** A pure tape-reader has no information source other than the price tape. It will issue belief updates triggered by chart patterns, options-skew shifts, technical breakouts — with nothing in the underlying world having changed. Output-side scoring (Brier, log score, Stone 11a's `belief_delta_on_truth`) will eventually mark it as no-edge, but that takes the full horizon to resolve. Stone 12 catches the structural symptom at process time.
+
+**The one signal.** For each belief update:
+
+```
+emission_in_window = True iff at least one emission row exists with
+                     as_known timestamp in (prior_update_time, this_update_time]
+```
+
+`motivated` if `emission_in_window = True`. `unmotivated` if `emission_in_window = False`. That's the whole tag. Purely mechanical — a database query on the emissions table, no reasoning-trace inspection, no judgment about what the agent did with the evidence.
+
+**What this deliberately does NOT do.** When an emission IS present, Stone 12 makes no claim about whether the agent used the emission's content, the price reaction, or both. That distinction collapses in reality: the price reaction IS the market's instant Bayesian update on the same emission, so an agent that incorporates both is reading two views of the same disclosure, not two independent signals. Trying to score "good citation vs bad citation" from reasoning-trace text would false-flag the common case where emission and price co-occur. Stone 12 leaves that judgment to the output-side scoring.
+
+**Worked example — one agent watching AAPL over a quarter.**
+
+Eight belief updates over 90 days. For each, the evaluator checks the emissions table for the pre-update window:
+
+| # | Date | Emission in window? | Tag |
+|---|---|---|---|
+| 1 | 2026-02-12 | 10-Q filed 2026-02-11 | motivated |
+| 2 | 2026-02-15 | none | unmotivated |
+| 3 | 2026-02-28 | analyst day 2026-02-27 | motivated |
+| 4 | 2026-03-04 | none | unmotivated |
+| 5 | 2026-03-12 | supply-chain release 2026-03-11 | motivated |
+| 6 | 2026-03-20 | none | unmotivated |
+| 7 | 2026-04-08 | earnings call 2026-04-08 | motivated |
+| 8 | 2026-04-22 | competitor 8-K 2026-04-21 | motivated |
+
+Five motivated, three unmotivated. Three updates fired with nothing new in the world — those are the ones that need explanation.
+
+**Per-agent aggregation.**
+
+```
+unmotivated_update_rate = (# unmotivated updates) / (total updates)
+```
+
+For this agent: 3 / 8 = **0.375**. Compared across agent types:
+
+| Agent | Updates | Motivated | Unmotivated | Rate | Read |
+|---|---:|---:|---:|---:|---|
+| Disciplined reasoner | 12 | 11 | 1 | 0.083 | Updates almost exclusively on disclosures |
+| Mixed agent (above) | 8 | 5 | 3 | 0.375 | Reacting to price too often |
+| Tape-reader | 20 | 4 | 16 | 0.800 | Pure price-following |
+| Update-spammer | 50 | 8 | 42 | 0.840 | Update spam, no discipline |
+
+**The promotion-gate role.** Hard cap on `unmotivated_update_rate` (initial value: **0.10**). An agent that updates more than 10% of the time with no emission in window cannot be promoted regardless of output scores. The reasoning is structural: those updates have no evidence basis other than the tape, and the agent that issues them is doing reflection, not inference.
+
+**Why the narrow form is enough.** The price-tracking failure has two faces:
+
+1. **Pure tape-reader** — updates with no emission in window. Caught here. Mechanical and fast.
+2. **Sophisticated tape-reader** — waits for an emission to land, then publishes a belief that mirrors the market's instant reaction. `emission_in_window` is True for these, so Stone 12 says nothing. But `P_AI ≈ P_market` by construction, so `belief_delta_on_truth ≈ 0`, and Stone 11a marks it as no-edge once outcomes resolve.
+
+Stone 12 catches face (1) at update time. Stone 11a catches face (2) at horizon. Together they bracket the failure mode without needing to inspect reasoning traces or run ablations.
+
+**Why the citation-check version was wrong.** The earlier draft of Stone 12 tried to distinguish `emission_driven` from `price_driven` by inspecting the agent's `cognitive_audit_trail` for what it cited. That breaks in the common case: emissions cause price moves, the market's reaction IS information about how surprising the disclosure was, and an agent that reads both isn't doing anything wrong. Most legitimate updates would have been flagged as ambiguous, and the threshold for handling ambiguous rows was arbitrary in every direction. The narrow form sidesteps the entire problem by only asking the mechanical question that has a defensible answer.
+
+**Connection to intuitions.md #13** ("update on emissions, not on price"). The narrow form is the only piece of this intuition that's cleanly operationalizable. The full intuition — "weight the emission more than the price" — is enforced indirectly through Stone 11a, not through process inspection.
+
+**Connection to Stone 11a.** Complementary, not redundant. Stone 12 fires at process time and is binary; Stone 11a fires at horizon and is continuous. An agent with low `unmotivated_update_rate` AND positive mean `belief_delta_on_truth` is doing real inference. Either alone is insufficient.
+
+**What Stone 12 stores on the scoreboard.**
+
+```
+emission_in_window: bool
+motivated_flag:     Literal["motivated", "unmotivated"]
+emission_ids:       list[UUID]   # the emission rows in the pre-update window, if any
+```
+
+No verdict about how the agent used those emissions. The emission ids are stored for downstream forensics (which disclosures preceded this update) but not interpreted by Stone 12 itself.
+
+**One sentence.** Stone 12 reduces to a single mechanical check at update time — was there an emission in the window before this update? — flags unmotivated updates as suspect, caps the per-agent rate at promotion, and leaves all judgments about which evidence the agent weighted to the output-side scoring that Stone 11a already provides.
+
+**Two parked architectural questions (not yet decided — see [DECISIONS.md](DECISIONS.md) "Open architectural questions").**
+
+1. **Trigger architecture — emission-triggered (A) vs agent-driven (B).** The narrow form above is Architecture B. Tentative lean: Architecture A, in which Contracts without a `triggering_emission_id` are structurally rejected and Stone 12 collapses to a one-line gate. Decision lands when Layer 4 emissions schema is built (Stone 22–23).
+2. **Emissions taxonomy.** "Emission" is broader than company-specific filings. The taxonomy includes direct (company), sector (peers / suppliers / customers), macro (rates, CPI, NFP, geopolitical), and cross-asset (commodities, FX, credit). Each emission row carries scope metadata identifying which underlyings it applies to. A Fed 100 bps move is ONE emission row in scope for hundreds of names. Schema lands with Stone 22–23.
+
+Both are parked with explicit revisit triggers in DECISIONS.md. Stones 13 onward proceed under the working assumption that Architecture A is in force and "emission" means the full taxonomy.
+
+### Stone 13 — decision-quality with NoAction as first-class peer
+
+**Why this stone exists.** Stones 6–12 measured the BELIEF — calibration, gap from market, evidence grounding. None of them scored the action the agent actually took. Stone 13 puts the action layer on the scoreboard.
+
+**The two-sided framing.** Two equally important sides, both graded the same way:
+
+- Did the agent trade when the gap justified it?
+- Did the agent decline to trade when the gap didn't?
+
+Most evaluation systems get the second side wrong. They reward "good trades" and ignore "good restraint," which produces an agent that always finds a trade because trades are scored and restraint is invisible. That's the failure mode named in BIAS_PATTERNS #12 (trade-for-trade's-sake). Stone 13 fixes it by making `NoAction` a typed, first-class outcome that gets graded the same way `TradeAction` does.
+
+**The three coherence checks.** For each Contract, the evaluator runs three mechanical checks on the action vs the inputs (belief, gap, costs) at decision time — no outcome needed:
+
+| Check | What it verifies |
+|---|---|
+| Threshold match | Did the agent trade iff the gap on the truth-candidate state exceeded the cost threshold? (Trade if `gap > cost`. `NoAction` if `gap ≤ cost`.) |
+| Direction match | If trading, is the position on the right side of the gap? (Positive gap on `strengthening` → long; negative gap → short.) |
+| Expression match | If trading, does the expression type fit the belief shape? (Directional belief → equity-long/short. Bimodal belief → straddle. Concentrated uncertainty → vol-long. Pair structure → relative-value.) |
+
+The action is **coherent** iff all three checks pass. Otherwise it's **incoherent**, and the specific sub-flag(s) that failed are stored alongside the verdict.
+
+**Worked example — six Contracts on AAPL.** All 1-month horizon, three states `{strengthening, stable, decaying}`. Cost threshold = 5 pp (a trade needs gap > 5 pp on the truth-candidate state to overcome its round-trip costs):
+
+| # | P_AI(strg) | P_mkt(strg) | Gap on strg | Rationality says | Agent's action | Verdict | Sub-flag failing |
+|---|---:|---:|---:|---|---|---|---|
+| A | 65% | 40% | +25 pp | Long equity | Long equity | ✓ coherent | — |
+| B | 55% | 50% | +5 pp | NoAction (gap = cost) | Long equity | ✗ incoherent | threshold_miss |
+| C | 35% | 45% | -10 pp | Short equity | Long equity | ✗ incoherent | direction_miss |
+| D | 30% | 35% | -5 pp | NoAction | NoAction | ✓ coherent | — |
+| E | 50% | 50% | 0 pp | NoAction | NoAction | ✓ coherent | — |
+| F | bimodal {strg: 50%, stbl: 0%, dec: 50%} | flat market | 0 pp on strg | Straddle / vol-long | Long equity | ✗ incoherent | expression_miss |
+
+Three of six coherent (A, D, E). Three incoherent (B, C, F) — each failing a different sub-flag, which is stored separately so the SOURCE of the incoherence is visible downstream.
+
+**Per-agent aggregation.**
+
+`decision_quality_rate` = coherent / total = **3/6 = 0.50** for this agent. Across agent types:
+
+| Agent | Total | Coherent | Rate | Threshold-miss | Direction-miss | Expression-miss | Read |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Discriminating | 50 | 47 | 0.94 | 1 | 1 | 1 | Trades when gap > cost, right side, right expression |
+| Mixed (above) | 6 | 3 | 0.50 | 1 | 1 | 1 | Mixed failures across all three sub-flags |
+| Trade-spammer | 100 | 35 | 0.35 | 45 | 15 | 5 | Trades below cost constantly; main failure mode is threshold |
+| Lazy (always NoAction) | 100 | 60 | 0.60 | 0 | 0 | 0 | Coherent often (most situations call for NoAction) but never acts on real edge |
+
+The trade-spammer's failure is concentrated in threshold-miss (trades when shouldn't). Discriminating agent's three misses are spread evenly — small sample of marginal cases. The lazy agent has clean Stone 13 numbers because they never make a wrong trade — they make NO trades.
+
+**Stone 13 is a column, NOT a hard cap.** This is the load-bearing framing change from the original draft. Two compensating-virtue scenarios that prove a hard cap on `decision_quality_rate` would filter out skill:
+
+- **The lazy agent looks better than they are on Stone 13 alone.** 60% coherence — coherent on most rows because most market situations DO call for NoAction. But they sit on every real edge. Stone 13 alone doesn't catch them. **Combine with Stone 11a (mean `belief_delta_on_truth`):** the lazy agent's mean gap is near-zero (they never act, so their actions structurally don't capture the gap), so Stone 11a marks them. The two columns together unmask them.
+- **The sophisticated agent looks worse than they are on Stone 13 alone.** A real agent might legitimately deviate from the textbook coherent action: declining a positive-gap trade because the position is crowded, shorting a winner to lock in gain, using long-vol when implied vol is unusually cheap relative to belief structure. The three mechanical checks don't model these factors. A hard cap at 0.90 would filter out a 0.70-coherence agent whose other columns (gap, calibration, sizing) are strong — exactly the agent we want to promote.
+
+So: `decision_quality_rate` is a column on the scoreboard. The promotion gate combines it with `belief_delta`, `unmotivated_update_rate`, held-out replay return, and Kelly-sizing quality using an explicit rule. No fixed threshold. See Stone 9's "column-on-scoreboard vs hard-cap-on-column" discussion for the general principle.
+
+**Per-sub-flag aggregation (what the three columns reveal).** Storing the sub-flags separately lets the gate distinguish failure shapes:
+
+- High threshold-miss rate → trade-for-trade's-sake agent. Trades below the cost threshold constantly.
+- High direction-miss rate → agent's belief and action disagree about which side of the gap to take. Possibly a sign-error somewhere in the cognition.
+- High expression-miss rate → agent reads the belief shape but picks the wrong instrument (e.g., directional trade on a bimodal belief). Pattern matches a model that hasn't internalized payoff structures.
+
+Each sub-flag is its own diagnostic. They are NOT combined into the rate without the breakout; the breakout is what lets a promotion gate diagnose what's actually broken when coherence is low.
+
+**What Stone 13 does NOT measure.**
+
+- **Sizing.** "Should the long be size 5 or size 50?" — that's Kelly territory (Stone 33).
+- **Capacity.** "Can the size actually be deployed at scale?" — Stone 14 (capacity-adjusted return).
+- **Did the trade make money.** Outcome-grading is rejected (DESIGN.md #1, Stone 4). A coherent decision can lose; an incoherent decision can win. Stone 13 grades the decision, not the realized P&L.
+
+**Connection to BIAS_PATTERNS #12.** Trade-for-trade's-sake is now structurally detectable: high threshold-miss rate. The pattern was named in BIAS_PATTERNS to be watched for; Stone 13's threshold-miss flag is the watcher.
+
+**Connection to NoAction as first-class.** Cases D and E in the worked example both score coherent. Neither traded. They are NOT folded into a degenerate "size 0 trade" — they are scored as their own type of correct decision. From [CONTRACT.md](CONTRACT.md): `NoAction { decision_time, reason }` is a typed peer of `TradeAction`, with its own scoring path.
+
+**One sentence.** Stone 13 grades the action's coherence with the inputs (belief, gap, costs) via three mechanical checks (threshold-match, direction-match, expression-match) with three sub-flags stored separately for diagnosis; the resulting `decision_quality_rate` is a scoreboard column the promotion gate weighs alongside other signals — NOT a hard cap — because sophisticated agents can legitimately deviate from the textbook coherent action and the gate needs to see the full picture to judge.
+
+### Stone 14 — capacity-adjusted return
+
+**Why this stone exists.** Stones 11a and 13 measured the gap in probability space — the difference between the agent's belief and the market's, and whether the agent acted coherently on it. Neither measured what fraction of that gap actually arrives in your account after you try to capture it. Stone 14 closes the loop between *nominal edge* (what you saw) and *realized edge* (what you got).
+
+**The four frictions between nominal and realized.**
+
+1. **Bid-ask spread.** Buy at the ask, sell at the bid. Lose half the spread on each leg of the round trip.
+2. **Commission.** Fixed cost per trade. Mostly zero at retail brokers; not zero everywhere.
+3. **Market impact.** Your buying pushes the price up; your selling pushes it down. Scales with your size relative to the market's normal daily volume.
+4. **Alpha decay during execution.** If you can't fill in one print, you spread over multiple days. While you're filling, others see the same gap and the price drifts.
+
+The first two are fixed. The third and fourth scale with size.
+
+**The size-vs-liquidity relationship.** The empirical square-root law (Almgren and others): market impact grows with the square root of (size ÷ average daily volume). Double your size → impact grows by about 1.4×, not 2×. Take 10× the size → impact about 3× as bad. Deeper markets (higher ADV) hurt less per dollar of trade.
+
+**Worked example — liquid name, AAPL.** Gap = +25 pp on strengthening. Agent goes long equity. AAPL ADV ~ $5B. Spread ~ 5 bps per side.
+
+| Trade size | Size / ADV | Round-trip cost | Realized edge |
+|---:|---:|---:|---:|
+| $10,000 | 0.0002% | ~10 bps | ~24.9 pp |
+| $1,000,000 | 0.02% | ~12 bps | ~24.9 pp |
+| $100,000,000 | 2% | ~30 bps | ~24.7 pp |
+| $1,000,000,000 | 20% | ~200 bps + multi-day execution | ~23 pp |
+
+For AAPL, you need genuinely institutional size before capacity starts biting. Retail doesn't see the friction here.
+
+**Worked example — less liquid name, microcap ABC.** Same gap (+25 pp), same direction. ABC ADV ~ $500K. Spread ~ 50 bps per side.
+
+| Trade size | Size / ADV | Round-trip cost | Realized edge |
+|---:|---:|---:|---:|
+| $1,000 | 0.2% | ~100 bps | 24.0 pp |
+| $10,000 | 2% | ~150 bps | 23.5 pp |
+| $100,000 | 20% | ~500 bps + multi-day execution | ~20.0 pp |
+| $1,000,000 | 200% | impossible without weeks of TWAP, alpha mostly gone | ~0–5 pp |
+
+Same gap, same agent, different name. The microcap edge degrades fast as size scales.
+
+**The discovered fact — capacity profile per agent.** Aggregating across many predictions reveals where each agent's edge actually lives:
+
+| Agent | Mean nominal edge | At $10K | At $1M | At $100M |
+|---|---:|---:|---:|---:|
+| Liquid-name specialist | +10 pp | +9.9 pp | +9.7 pp | +9.0 pp |
+| Microcap specialist | +30 pp | +29.5 pp | +15.0 pp | **−5 pp** |
+| Mixed | +18 pp | +17.5 pp | +14.0 pp | +2.0 pp |
+
+The microcap specialist looks dominant on nominal edge — until you try to put real money to work. At $100M the edge inverts; at $1M it's halved. The liquid-name specialist looks smaller per-trade but scales beautifully. **Stone 14 makes the capacity profile of each agent's edge visible** so the promotion decision can match the agent to the size range that matters.
+
+**Per-agent aggregation.**
+
+For each Contract: `realized_edge = nominal_edge − spread − commission − impact(size, ADV) − alpha_decay`. Then:
+
+```
+mean_realized_edge        = average of realized_edge across all Contracts
+realized_to_nominal_ratio = mean_realized_edge / mean_nominal_edge
+```
+
+The ratio is the headline diagnostic. Near 1.0 = the agent's edge survives at their chosen sizes. Near 0.5 = half is eaten by friction. Below 0 = the agent's strategy actively loses money at their chosen size.
+
+**Sliceable primarily by size bucket.** The most important slicing dimension for Stone 14 is **deployable size**, not horizon or sector. The scoreboard supports queries like `mean_realized_edge_at_size(agent, size_bucket)`. The promotion gate evaluates per-bucket, not just on the aggregate.
+
+**Column, NOT a hard cap (per Stone 9's column-vs-cap meta-principle).** A high-realized-edge agent at $10K may be loss-making at $100M and vice versa. A single threshold can't capture this. The promotion gate sees the full size profile and decides.
+
+**One near-tautological structural check.** Mean realized edge at the agent's stated deployable-size range must be **positive**. This isn't an arbitrary cap; it's what "having an edge" literally means. An agent whose realized edge is negative at the size they propose isn't an edge — it's a losing strategy. Different from the 0.90 I overproposed in Stone 13: this is a `> 0` constraint that's tautological, not a calibrated threshold.
+
+**Connection to Stone 33 (Kelly sizing).** Stone 33 asks "was the agent's size Kelly-optimal given the gap?" Stone 14 asks "does the agent's stated size produce positive realized return after frictions?" Both can fail independently. An agent might pick the right Kelly fraction nominally (passes 33) but choose a microcap name where size × liquidity wipes the gap (fails 14).
+
+**Connection to expression-type (Stone 11).** Different expressions have different capacity ceilings:
+
+| Expression | Typical capacity |
+|---|---|
+| Equity-long in mega-cap | Very high |
+| Equity-long in small/microcap | Low to medium |
+| Options on liquid single names | Medium |
+| Options on illiquid single names | Low |
+| Pairs / relative-value | Medium |
+| Vol-spreads | Medium to low |
+| OTC structures | Low |
+
+The promotion gate sees `realized_edge × expression_type × size_bucket` as a multi-dimensional slice. Skill is tagged per slice — same `domain_of_validity` logic as Stones 10 and 11.
+
+**The cost-model dependency.** Stone 14 needs realistic models for spread, impact, and execution drag. Phase 0 toys use simple constructed models (fixed spread, square-root impact with calibrated constant). Phase 2+ refines from observed execution data. The deferred-fields list in [CONTRACT.md](CONTRACT.md) (cost_model, slippage_model, capacity_estimate, payoff_distribution) maps to Stone 14's inputs.
+
+**What Stone 14 does NOT measure.**
+
+- **Kelly optimality of size.** Stone 33's job. Stone 14 takes the size as given.
+- **Whether the agent's belief was right.** Stones 6–8 / 11a / 13 do that. Stone 14 takes the gap as given.
+- **Process quality of the update.** Stone 12's job.
+
+It only measures: at the agent's stated size, what fraction of the nominal edge actually survives to the account?
+
+**Connection to DESIGN.md.** Capacity-adjusted scoring is a stated DESIGN.md Operational Constraint — Phase 5 (year-2) requires "capacity-adjusted scoring with realistic retail market-impact assumptions" (Stone 44). Stone 14 is the scoreboard machinery; Stone 44 is the year-2 refinement using accumulated execution data.
+
+**One sentence.** Stone 14 maps the agent's stated size against the underlying's liquidity (via spread, commission, square-root impact, and alpha decay) to compute realized edge — produces a per-Contract column and per-size-bucket aggregates so the promotion gate evaluates each agent's capacity profile rather than just their headline nominal edge, with one structural near-cap: realized edge at the agent's stated size must be positive, because anything else isn't edge.
+
+---
+
+**Layer 2 — the evaluator's math — complete.** Stones 8 through 14: calibration (8), scoreboard assembly (9), multi-horizon (10), expression-type tagging (11), market-delta scoring (11a), process-quality flag (12), decision-quality with NoAction as peer (13), capacity-adjusted return (14). The evaluator's full column set is now specified at the conceptual level. Implementation follows in Phase 0 substeps 4b/4c. Next: **Layer 3 — evaluator validated on toys** (synthetic-market toy, adversarial agents, validation, reliability diagrams, model interface contract, memory schema, property tests).
 
 ---
 

@@ -219,6 +219,33 @@ Every entry: **what was proposed → why rejected → principle / commitment inv
 
 ---
 
+## Open architectural questions (parked, not yet decided)
+
+### Belief-update trigger architecture: emission-triggered vs agent-driven (2026-05)
+
+- **Context**: Surfaced during Stone 12 teaching. The narrow form of Stone 12 (motivation check + `unmotivated_update_rate` cap) is correct ONLY under Architecture B (agent decides when to update). Michael's audit caught that the question "can the agent update without an emission?" was never explicitly answered. The two architectures produce materially different mechanisms.
+- **Architecture A (emission-triggered)**: Agent emits a Contract only when an in-scope emission arrives. Each Contract carries a required `triggering_emission_id`. Mechanism layer rejects Contracts without one. Stone 12 collapses to a one-line structural constraint. Belief decay between emissions is the evaluator's job (mechanical), not an agent emission.
+- **Architecture B (agent-driven)**: Agent decides when to update — emission, scheduled review, reflection, price move, etc. Stone 12 (narrow form) measures and caps the unmotivated rate.
+- **Tentative lean**: **Architecture A**. Matches DESIGN.md's "update on emissions, not on price" intuition as a structural constraint instead of a measured threshold. Closes the price-tracking failure mode at the mechanism layer; Stone 11a still catches the sneaky price-mirroring variant. Lean recorded; not yet committed.
+- **Why deferred**: The implementation requires the emissions table and the `triggering_emission_id` field, both of which land in Layer 4 (data spine) / Phase 1. Committing to A now in prose without the supporting machinery would be hollow. The decision lands when Stone 22–23 (emissions schema + canonical six data types) is built.
+- **Revisit trigger**: When Phase 1 begins (start of Layer 4 work), this entry is reopened and the architecture is formally committed before the emissions schema is finalized. If the decision is A, `triggering_emission_id` is a required field; if B, the `unmotivated_update_rate` cap is added to the promotion gate.
+- **Working assumption in the meantime**: Teaching for Stones 13–21 proceeds as if Architecture A is in force — Contracts have triggering emissions, belief decay is evaluator-side, Stone 12 is effectively a structural gate rather than a measured rate. Any Stone 12 prose currently in PYRAMID.md or FORMULAS.md is the narrow-form fallback that applies only if Architecture B is chosen.
+
+### Emissions table — scope taxonomy (2026-05)
+
+- **Context**: Same Stone 12 session. The original Stone 12 walkthrough treated "emission" as "company-specific filing" — a 10-Q on AAPL, an earnings call on AAPL. Michael's audit caught that this is structurally wrong: a 100 bps Fed move is one emission row that applies to hundreds of companies, and so is every CPI release, NFP print, oil shock, EU regulation, competitor 8-K, supplier disclosure. The narrow framing would have under-counted "in scope" emissions for most updates on most names.
+- **Taxonomy required**: every emission row in the canonical schema carries scope metadata, not just a single `underlying`. Categories:
+  - **Direct** — emission about a single underlying (10-Q, earnings, company news).
+  - **Sector / industry** — competitor disclosures, industry data releases. Scope: list of underlyings in the sector or supply chain.
+  - **Macro** — rates, CPI, NFP, GDP, jobless claims, geopolitical events. Scope: `affects_all: true` plus differential sensitivity tags.
+  - **Cross-asset** — commodity moves, FX moves, credit spreads, materially-sized factor moves. Scope: list of affected sectors or factor-exposed underlyings.
+- **Additional fields likely needed**: `surprise_magnitude` or `consensus_delta` (a fully-priced 100 bps hike vs a surprise 100 bps hike are different emissions for scoring purposes), `materiality_threshold` (a 5 bps Fed move is noise; 100 bps is a regime change), `affected_sectors`, `affected_factors`.
+- **Why deferred**: Same reason as Architecture A above — the emissions table is built in Layer 4. The taxonomy is committed to as an architectural target; the schema lands with Stone 22–23.
+- **Revisit trigger**: Stone 22 (corpus QA) and Stone 23 (canonical six data types) — when emissions schema is being finalized. The taxonomy above is the working spec; refinements happen in implementation.
+- **Working assumption in the meantime**: "Emission" in any Stone 13–21 teaching means the full taxonomy above, not just company-specific filings. A fed-rate-move is an emission. A competitor's 8-K is an emission for sector peers. Macro is real.
+
+---
+
 ## Disposition guidance
 
 When a new session encounters a proposal that matches anything in this file:
