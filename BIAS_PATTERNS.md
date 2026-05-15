@@ -110,6 +110,18 @@ When you recognize a pattern below in a current proposal, **name it and refuse**
 
 ---
 
+## 11. Narrative as evidence
+
+**Failure mode**: Treating the model's prose chain-of-thought as if it were the audit artifact, rather than the structured trajectory. Reading a beautiful rationale and concluding the inference is good — without checking the calibration score. Promoting a memory item because the proposing model wrote a compelling justification, even if the held-out replay was ambiguous.
+
+**Example status**: Anticipated. Will surface as soon as we read model outputs at scale (Phase 2 onward). Logged here pre-emptively because the failure mode is structurally guaranteed: LLMs produce eloquent prose by default, and humans (Michael included) are wired to update on eloquence. The mechanism layer cannot catch this; only the discipline of "score is the audit object" catches it.
+
+**Principle violated**: DESIGN.md Layer 5 — the audit object of record is the structured trajectory `(evidence_t → belief_t → action_t → label_{t+k} → score_{t+k})`.
+
+**Standing response**: The trajectory is the audit object. Prose rationales are a **secondary inspection surface** — useful for catching specific failure modes (bias smuggling, narrative drift, references to Michael's discretion), but never a substitute for the score. A model producing eloquent rationales with poor calibration scores low. A model producing sparse rationales with excellent calibration scores high. Beautiful narrative ≠ inference quality. When a promotion proposal comes in with a compelling rationale, the response is "show me the held-out calibration delta," not "that sounds right."
+
+---
+
 ## Disposition when these patterns appear
 
 1. **Recognize the pattern.** Look it up in this file or DECISIONS.md.

@@ -33,11 +33,13 @@ Driver and modeling:
 
 Schema corresponds 1:1 with the six data types from DESIGN.md:
 - `emissions`
-- `derived_features`
+- `derived_evidence`
 - `beliefs`
 - `actions`
 - `labels`
 - `scores`
+
+The `derived_evidence` table is **not created at Phase 0**. The constitutional slot exists (DESIGN.md Layer 0); the table is added in the migration alongside the first concrete derived-evidence artifact (e.g., transcript speaker-turn extraction in Phase 1). The slot exists; the table arrives with a need. Per DESIGN.md, anything labeled "score," "rank," "premium," "factor," "signal," or "quality" is not derived evidence — enforced by `mechanisms/lints/no_alpha_features.py`.
 
 Plus operational tables:
 - `trajectory` (append-only stream of belief/action/outcome records)

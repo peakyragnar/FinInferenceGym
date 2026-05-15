@@ -46,6 +46,8 @@ The model is the cognitive engine. The system is the verifier.
 
 > **Cognition stays in the model. Rigor stays in the system. They do not overlap.**
 
+> **The verifier may encode physics — Bayes, Kelly, proper scoring, point-in-time discipline. The verifier may not encode alpha.** Hand-coded rules in the verification layer are physics. Hand-coded rules in the cognition layer are alpha smuggling. The distinction is load-bearing: "no hand-coded rules" is wrong (the verifier IS hand-coded rules); "no hand-coded alpha cognition" is right.
+
 The model is granted **maximum** freedom to reason. The evaluator applies **maximum** strictness to its outputs. **Every constraint that would narrow the model's search space must migrate to the verification side, never sit on the cognition side.** The agent never judges itself.
 
 ### 6. The model reasons natively over raw evidence.
@@ -120,7 +122,9 @@ Architectural commitments are encoded in code that the system cannot self-modify
 Lower layers must be calibrated before higher layers depend on them.
 
 ### Layer 0 — Data Spine
-Immutable, point-in-time, versioned. All data flows through this layer. Six data types: **raw emissions**, **derived features**, **beliefs**, **actions**, **labels**, **scores**. Every record carries timestamp + provenance + version. Live feed and historical replay are structurally identical pipelines.
+Immutable, point-in-time, versioned. All data flows through this layer. Six data types: **raw emissions**, **derived evidence**, **beliefs**, **actions**, **labels**, **scores**. Every record carries timestamp + provenance + version. Live feed and historical replay are structurally identical pipelines.
+
+> **Derived evidence is mechanically generated, fully provenance-linked, inspectable transformations of raw emissions** — speaker-turn extraction from a transcript, section-tagging of a 10-K, peer-group construction by SIC code, return aggregation from prices. It is reproducible from the raw emission plus the version of the transformation code. **It is not alpha logic, scoring, ranking, or signal.** Anything labeled "score," "rank," "premium," "factor," "signal," or "quality" is not derived evidence — it is alpha cognition and belongs in the model, not in the spine. The naming is enforced by `mechanisms/lints/no_alpha_features.py`.
 
 The data spine is also the trajectory store — every belief / action / outcome / score is preserved with full provenance, in a format fit for eventual fine-tuning of own-models.
 
@@ -148,6 +152,8 @@ Promotion gate: any memory addition or population change must survive held-out r
 
 ### Layer 5 — Audit (Michael)
 Reviews evaluator integrity, prior reasonableness, data discipline, and promotion-log honesty. Approves architectural changes. Catches smuggled biases. Maintains the standing audit questions (below).
+
+> **The audit object of record is the structured trajectory:** `(evidence_t → belief_t → action_t → label_{t+k} → score_{t+k})`. Prose rationales from the model are a **secondary inspection surface** — useful for catching specific failure modes (bias smuggling, narrative drift), but they cannot substitute for the trajectory. A model producing eloquent rationales with poor calibration scores low; a model producing sparse rationales with excellent calibration scores high. **Beautiful narrative ≠ inference quality.** See BIAS_PATTERNS.md #11 (narrative as evidence).
 
 ---
 

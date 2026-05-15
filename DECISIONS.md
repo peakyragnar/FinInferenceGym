@@ -157,6 +157,30 @@ Every entry: **what was proposed → why rejected → principle / commitment inv
 
 ---
 
+## Constitution tightening v1 (2026-05)
+
+- **Context**: Michael's review during the pre-substep-4 design pass identified language drift risks and one concrete drift risk in the data-spine schema. The review framing — *"the verifier may encode physics, not alpha"* — sharpened the cognition/verification boundary in a way the original DESIGN.md language did not. Three concrete tightenings landed simultaneously, before the evaluator v0 build, on the principle that we are in the "getting it right" phase, not the "minimize previous work" phase.
+
+- **Decision** (three coordinated changes):
+  1. **Physics-not-alpha sharpening of DESIGN.md commitment #5.** Added a clarifying block-quote: "The verifier may encode physics — Bayes, Kelly, proper scoring, point-in-time discipline. The verifier may not encode alpha. Hand-coded rules in the verification layer are physics. Hand-coded rules in the cognition layer are alpha smuggling. The distinction is load-bearing: 'no hand-coded rules' is wrong (the verifier IS hand-coded rules); 'no hand-coded alpha cognition' is right." The matching sentence in CLAUDE.md "The Goal" was updated from "No hand-coded rules" to "No hand-coded alpha cognition."
+  2. **`derived_features` → `derived_evidence` rename + scope language.** DESIGN.md Layer 0, TECHNICAL.md schema list, PYRAMID.md Stone 23, and `src/fingym/data/__init__.py` docstring all updated. New scope paragraph in DESIGN.md Layer 0 defines derived evidence as mechanically generated, fully provenance-linked transformations of raw emissions (speaker-turn extraction, section-tagging, peer-group construction, return aggregation) — never alpha logic, scoring, ranking, or signal. The `derived_evidence` Postgres table is **not created at Phase 0**; the constitutional slot exists, the table arrives with a need.
+  3. **Trajectory-as-audit-object clarification + new BIAS_PATTERNS entry #11 "narrative-as-evidence."** DESIGN.md Layer 5 now states explicitly that the audit object of record is the structured trajectory `(evidence_t → belief_t → action_t → label_{t+k} → score_{t+k})`; prose rationales are a secondary inspection surface only. CLAUDE.md updated from "Ten specific patterns" to "Eleven specific patterns" with narrative-as-evidence added to the named list.
+
+- **Mechanism added**: `mechanisms/lints/no_alpha_features.py` — strict denylist of historical quant-alpha compound names (`quality_score`, `value_premium`, `momentum_factor`, `tone_score`, `founder_premium`, `conviction_rank`, etc.; 25 entries). Scans `src/fingym/` and `migrations/`; skips `evaluator/`, `toys/`, `tests/`, `mechanisms/`. Per-line override marker `# derived-evidence-allow: <reason>` for legitimate mechanical transformations that happen to include a denylisted token. 22 unit tests in `tests/unit/test_no_alpha_features.py`. Wired into `.pre-commit-config.yaml`. The lint is a tripwire, not airtight — extending the denylist requires a DECISIONS.md entry; weakening it requires a DECISIONS.md entry plus Michael sign-off.
+
+- **Pushbacks recorded** (claims Claude argued against in the review and Michael accepted):
+  - Adding "2-month" explicitly to the multi-horizon list was rejected as the wrong abstraction; the architectural commitment is *evaluator parameterizable on horizons*, not a longer fixed list. To be enforced when the evaluator is built (substep 4).
+  - Building 8 proposed lints up front was rejected as mechanism-bloat; only `no_alpha_features.py` lands now. `time_leak_guard` and `promotion_requires_holdout` are queued for Phase 1 / Phase 4 respectively. The remaining proposals (`raw_evidence_required`, `output_schema_required`, `no_fixed_hypothesis_ontology`, `no_prompted_checklist_lock`, `no_human_label_import`) are addressed by the type system, the Protocol contract, or import-linter — not by additional lints.
+  - "Prose rationales are zero-value" was rejected; the right framing is *trajectory is the audit object of record; prose is a secondary inspection surface for catching bias smuggling and narrative drift.* Reflected in the DESIGN.md Layer 5 paragraph.
+
+- **What does NOT change**: The 10 commitments. Phase 0 next action (substep 4: evaluator v0 + 3-state synthetic toy). The teaching cadence. The repo structure. The two existing lints. The pyramid stones taught so far.
+
+- **Files touched**: CLAUDE.md, DESIGN.md, TECHNICAL.md, PYRAMID.md, BIAS_PATTERNS.md, `src/fingym/data/__init__.py`, `mechanisms/lints/no_alpha_features.py` (new), `tests/unit/test_no_alpha_features.py` (new), `.pre-commit-config.yaml`, this file. Pre-commit suite green across 15 hooks; 22/22 lint tests green.
+
+- **Principle**: DESIGN.md #5/#6 (cognition/verification boundary), Layer 0 (data spine integrity), Layer 5 (audit object); plus the project's "mechanisms over prompts" — the language tightening would have been load-bearing prose without the matching lint. The lint is what makes the language enforceable.
+
+---
+
 ## Disposition guidance
 
 When a new session encounters a proposal that matches anything in this file:

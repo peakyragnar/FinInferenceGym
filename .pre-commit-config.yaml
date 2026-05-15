@@ -70,6 +70,18 @@ repos:
         types: [python]
         exclude: ^(tests/|src/fingym/llm/|mechanisms/)
 
+      # DESIGN.md Layer 0 — derived evidence is mechanical transformation,
+      # not alpha cognition. Forbids hand-coded alpha-feature names
+      # (factor scores, sentiment ranks, conviction premiums) in the data
+      # spine and agent code paths. See BIAS_PATTERNS.md and
+      # DECISIONS.md "Constitution tightening v1 (2026-05)".
+      - id: no-alpha-features
+        name: no hand-coded alpha-feature names in data spine / agents
+        entry: uv run python mechanisms/lints/no_alpha_features.py
+        language: system
+        types: [python]
+        exclude: ^(tests/|mechanisms/|src/fingym/evaluator/|src/fingym/toys/)
+
       # DESIGN.md #5 — type discipline enforces cognition/verification
       # boundary at the code level. Runs `uv run mypy` so the type-checker
       # sees the project's locked dep graph (single source of truth in

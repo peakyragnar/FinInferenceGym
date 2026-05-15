@@ -2,7 +2,7 @@
 
 ## The Goal
 
-We are building a system whose cognitive work is done entirely by AI models — reading raw market evidence, forming probability distributions over hidden state, proposing hypotheses, deciding actions. No hand-coded rules, no human-engineered features, no thematic priors taking the place of model reasoning. The model is the engine. Everything below the cognition layer exists to do one thing: verify. Strict math (Bayes, Kelly, proper scoring), strict data discipline (point-in-time, immutable, full provenance), strict promotion (held-out replay only). The architecture is shaped so that as frontier models get better, the system gets better automatically; and as verified trajectories accumulate, we eventually train our own model from them that beats the one we started with. Michael is the auditor — his job is to watch for two things: bias creeping in (his preferences, his themes, his trades smuggled in as signal), and any layer losing inspectability. If both stay true, the system rides the exponent without ceiling.
+We are building a system whose cognitive work is done entirely by AI models — reading raw market evidence, forming probability distributions over hidden state, proposing hypotheses, deciding actions. No hand-coded alpha cognition, no human-engineered features as primary input, no thematic priors taking the place of model reasoning. The verifier IS hand-coded — Bayes, Kelly, proper scoring, point-in-time discipline — that is physics. The verifier is never hand-coded alpha. The model is the engine. Everything below the cognition layer exists to do one thing: verify. Strict math (Bayes, Kelly, proper scoring), strict data discipline (point-in-time, immutable, full provenance), strict promotion (held-out replay only). The architecture is shaped so that as frontier models get better, the system gets better automatically; and as verified trajectories accumulate, we eventually train our own model from them that beats the one we started with. Michael is the auditor — his job is to watch for two things: bias creeping in (his preferences, his themes, his trades smuggled in as signal), and any layer losing inspectability. If both stay true, the system rides the exponent without ceiling.
 
 This statement is the synthesis the architecture serves. DESIGN.md is the formal commitments. CLAUDE.md (this file) is the behavior they imply for Claude Code. PYRAMID.md is the running teaching state.
 
@@ -66,9 +66,9 @@ Slippage from DESIGN.md is the single biggest project risk during build. Restori
 
 ## Bias-Smuggling Patterns
 
-Ten specific patterns, with the named examples that occurred during design and the standing response for each, live in [BIAS_PATTERNS.md](BIAS_PATTERNS.md). Read it once at session start. When you see a pattern reappearing, **name it and refuse**.
+Eleven specific patterns, with the named examples that occurred during design and the standing response for each, live in [BIAS_PATTERNS.md](BIAS_PATTERNS.md). Read it once at session start. When you see a pattern reappearing, **name it and refuse**.
 
-The patterns: thematic-prior-disguised-as-scope, personal-preference-disguised-as-scope, prestigious-framework-because-prestigious, human-in-the-loop-as-diagnostic, strong-prior-disguised-as-physics, single-model-lock-in, "just for now," narrowing-the-model-interface, buffet-answers, scope-expansion-without-reason.
+The patterns: thematic-prior-disguised-as-scope, personal-preference-disguised-as-scope, prestigious-framework-because-prestigious, human-in-the-loop-as-diagnostic, strong-prior-disguised-as-physics, single-model-lock-in, "just for now," narrowing-the-model-interface, buffet-answers, scope-expansion-without-reason, narrative-as-evidence.
 
 ---
 

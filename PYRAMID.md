@@ -84,7 +84,7 @@ The complete plan, by layer. Stones taught and committed are marked **✅**; sto
 
 ### Layer 4 — Point-in-time data spine + raw-evidence channel ⬜ (Phase 1)
 - Stone 22 ⬜ — corpus QA (validate the existing 10-year / 1700-name transcript corpus before any data flows)
-- Stone 23 ⬜ — the six data types in the canonical schema (emissions, derived_features, beliefs, actions, labels, scores)
+- Stone 23 ⬜ — the six data types in the canonical schema (emissions, derived_evidence, beliefs, actions, labels, scores) — derived_evidence is mechanical transformation only, never alpha cognition
 - Stone 24 ⬜ — point-in-time discipline in depth (`as_of` vs `as_known`, restatements, look-ahead audits)
 - Stone 25 ⬜ — replay vs live parity (the same pipeline must run both, byte-identical)
 - Stone 26 ⬜ — survivorship bias and the delisted shadow universe (Norgate fundamentals for all in-scope names)
