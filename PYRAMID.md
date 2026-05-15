@@ -67,7 +67,7 @@ The complete plan, by layer. Stones taught and committed are marked **✅**; sto
 - Stone 8 ✅ — calibration curves and reliability diagrams. Measures whether the agent's confidence language matches reality at scale. Runnable toy: `uv run python -m fingym.toys.calibration_diagram`. Full summary in Layer 2 body below.
 - Stone 9 ✅ — scoreboard assembly. A table with one row per prediction and one column per scoring metric, plus metadata columns (date, horizon, expression-type, agent_id) for slicing. Kept decomposed by default; collapsed to single numbers only at explicit decision points with declared rules. Full summary in Layer 2 body below.
 - Stone 10 ✅ — multi-horizon scoring (1m / 3m / 6m / 1y in parallel; horizon set is parameterizable, not hardcoded). Same decision time produces one Contract per horizon; each scored independently. The `horizon` column on the scoreboard enables per-horizon slicing for aggregation, per-horizon held-out replay at promotion, and per-horizon domain-of-validity tagging on promoted skills. Full summary in Layer 2 body below.
-- Stone 11 ⬜ — expression-type tagging within `TradeAction` (action-space-aware scoring; equity-long / equity-short / option-call / option-put / option-spread / option-straddle / vol-long / vol-short / pair). `NoAction` is a typed peer of `TradeAction`, not a sub-type of it — handled by Stone 13, not folded in here.
+- Stone 11 ✅ — expression-type tagging within `TradeAction`. Same belief can be expressed many ways (equity-long, option-call, option-spread, vol-long, pair, etc.) with different payoff structures. The scoreboard carries `expression_type` as the broad category; specific trade details (strike, expiration, size, premium) live inside the `TradeAction` object on the Contract. Per-expression-type promotion gate. `NoAction` is a typed peer, not folded here. Full summary in Layer 2 body below.
 - Stone 11a ⬜ — market-delta scoring (the agent's belief minus market-implied belief, scored against realized payoff). Distinguishes "well-calibrated but no edge" from "well-calibrated AND edge." Without this, the scoreboard cannot tell a calibrated agent that agrees with the market apart from a calibrated agent that monetizably disagrees. Operates on the `belief_delta` field of a `Contract` (see [CONTRACT.md](CONTRACT.md)). At Phase 0 the toy provides `P_market`; at Phase 2 the recovery mechanism (Stone 31) provides it for real markets.
 - Stone 12 ⬜ — process-quality flag (did the agent update on emissions vs price)
 - Stone 13 ⬜ — decision-quality score (action vs belief, given payoff structure), including `NoAction` as first-class. Scores: (a) did the agent correctly choose `NoAction` when calibrated `belief_delta` was below cost threshold, (b) when the agent chose `TradeAction`, did the expression match the belief shape (e.g., long-vol when belief is high-uncertainty). `NoAction` is scored separately, never collapsed to `size = 0` of a `TradeAction`. The `NoAction`-correct-when-no-edge case is explicitly rewarded — DESIGN.md Operational Constraints, BIAS_PATTERNS #12 (trade-for-trade's-sake).
@@ -514,6 +514,71 @@ This is what prevents the "skill that worked at 3m leaks into 1y and corrupts lo
 **No new structural machinery.** Multi-horizon scoring is the Stone 9 scoreboard *used correctly* — slicing by an existing column. The conceptual move is bigger than the implementation: state is per-horizon by default; the agent's job is per-horizon forecasting; the evaluator's job is per-horizon scoring.
 
 **One sentence.** The same belief means different things at different horizons; the agent emits one Contract per horizon; the scoreboard scores each independently; the system discovers where each agent's edge lives empirically — and the per-horizon promotion gate ensures skills only act where they're validated.
+
+### Stone 11 — expression-type tagging within `TradeAction`
+
+**The setup.** When the agent decides to trade, it must also choose **how** to express its belief. The same belief ("AAPL is strengthening") can be expressed many different ways — each with a different payoff profile under each outcome.
+
+**The expression-type categories** (what the `expression_type` column on the scoreboard records):
+
+| `expression_type` | Payoff shape |
+|---|---|
+| `equity-long` / `equity-short` | Linear in price move; symmetric upside/downside |
+| `option-call` / `option-put` | Asymmetric; capped downside (premium paid), big upside above/below strike |
+| `option-spread` | Asymmetric with both upside and downside capped; cheaper than naked option |
+| `option-straddle` / `option-strangle` | Profits from large moves in either direction |
+| `vol-long` / `vol-short` | Profits from realized vs implied volatility difference, regardless of direction |
+| `pair` / `relative-value` | Profits from one underlying outperforming another; hedged against market direction |
+
+**Critical distinction — category vs full spec.** `expression_type` on the scoreboard is the **broad category**. The specific trade details — underlying, strike, expiration, premium, direction (long or short the contract), size — live **inside the `TradeAction` object** on the Contract. Example:
+
+```
+TradeAction {
+  expression_type: "option-call"          ← scoreboard column captures THIS
+  underlying:      "AAPL"
+  direction:       "long"
+  strike:          210
+  expiration:      "2026-08-15"
+  size:            10  contracts
+  premium_paid:    $250  per contract
+}
+```
+
+The scoreboard slices on the category because that's where statistical power lives. The full spec lives on the Contract for payoff math (Stones 13 and 14).
+
+**Why category-level slicing.** With ~hundreds of trades over a year, you have many trades per category but few per specific strike-expiration combo. Slicing at the category level gives you statistical reads like *"this agent's mean Brier on option-call trades is 0.21; on equity-long trades is 0.18"* — meaningful comparisons. Slicing at the strike-by-strike level would give one row per unique trade, no aggregation possible.
+
+**Per-expression-type promotion gate.** Same shape as Stone 10's per-horizon gate. A candidate skill is tested per expression type:
+
+| Check at expression type | equity-long | option-call | vol-spread | pair |
+|---|:---:|:---:|:---:|:---:|
+| Held-out calibration improves | ✓ | ✓ | ✗ | ✓ |
+| Cross-model regression | ✓ | ✓ | (n/a) | ✓ |
+| Survivorship check | ✓ | ✓ | (n/a) | ✓ |
+
+→ Promoted with `expression_type: [equity_long, option_call, pair]`. Excluded from `vol-spread` context by the domain-of-validity filter. **A skill that doesn't validate at a given expression doesn't get to act there.** Prevents the "skill that worked on equity-direction leaks into options-trading" failure mode.
+
+**`NoAction` is a typed peer of `TradeAction`, not an expression type.**
+
+```
+Agent's action layer:
+  ├── TradeAction
+  │     ├── equity-long / equity-short
+  │     ├── option-call / option-put / option-spread / option-straddle
+  │     ├── vol-long / vol-short
+  │     └── pair / relative-value
+  └── NoAction  (← peer, not a sub-type; scored by Stone 13)
+```
+
+`NoAction` is scored on whether the agent correctly recognized the absence of edge — a different scoring path from any `TradeAction` (which is scored against a payoff structure). BIAS_PATTERNS #12 (trade-for-trade's-sake) is the defense `NoAction` provides.
+
+**Stacking with Stone 10.** A skill's domain-of-validity can carry BOTH `horizon: [list]` AND `expression_type: [list]` AND `sector: [list]`. Three independent slicing dimensions. A skill might be valid only at `horizon: [3m, 6m]` AND `expression_type: [equity_long]` AND `sector: [tech_hardware]` — narrowly tagged, narrowly applied. Prevents leakage across dimensions.
+
+**Connection forward.** Stone 13 (decision-quality) will use the *full* `TradeAction` details (strike, expiration, premium, etc.) to score whether the chosen specific trade matched the belief and the cost structure. Stone 14 (capacity-adjusted return) will use the same details to compute realistic P&L at deployable size.
+
+**In code.** `expression_type` is a string field on the scoreboard row (Stone 9 schema); `TradeAction` is the typed sum from [CONTRACT.md](CONTRACT.md). The full `TradeAction` object is stored alongside the scoreboard row for downstream payoff computation.
+
+**One sentence.** `TradeAction` has sub-types (equity-long, option-call, vol-spread, pair, …); `expression_type` on the scoreboard is the broad category for slicing; specific trade details live inside the `TradeAction` object; per-expression-type promotion gate ensures skills only act in expression contexts where they've been validated; `NoAction` is a typed peer of `TradeAction`, handled by Stone 13.
 
 ---
 

@@ -300,6 +300,79 @@ The three structures align — a Contract's horizon is the row's horizon is the 
 
 ---
 
+## Expression-type tagging within `TradeAction` (Stone 11)
+
+Same belief, different expressions = different payoff structures. The scoreboard's `expression_type` column is the **broad category** for slicing; full trade details live inside the `TradeAction` object on the Contract.
+
+### The expression-type categories
+
+```
+ExpressionType = Literal[
+  "equity-long",       "equity-short",
+  "option-call",       "option-put",
+  "option-spread",     "option-straddle",  "option-strangle",
+  "vol-long",          "vol-short",
+  "pair",              # / relative-value
+]
+```
+
+### Distinction: category vs full spec
+
+The scoreboard column captures only the category (`expression_type`). Full trade details (underlying, direction, strike, expiration, premium, size) live inside the `TradeAction` object:
+
+```
+TradeAction {
+  expression_type:  ExpressionType   # ← scoreboard column
+  underlying:       str              # e.g., "AAPL"
+  direction:        Literal["long", "short"]
+  strike:           float | None     # for options
+  expiration:       date | None      # for options
+  premium_per_unit: float | None     # for options
+  size:             int              # shares or contracts
+  notional:         float            # USD exposure
+}
+```
+
+The category is for slicing (statistical power). The full spec is for payoff math (Stones 13 and 14).
+
+### Per-expression-type promotion gate
+
+Same logic as per-horizon (Stone 10). A candidate skill carries `expression_type: list[ExpressionType]` in its domain-of-validity, containing only the expression types where all four promotion checks passed.
+
+At inference time, the agent's action choice is filtered to skills whose `domain_of_validity.expression_types` includes the agent's chosen expression.
+
+### Stacking with other slicing dimensions
+
+A skill's domain-of-validity is multi-dimensional:
+
+```
+domain_of_validity {
+  horizons:         list[Horizon]
+  expression_types: list[ExpressionType]
+  sectors:          list[Sector]
+}
+```
+
+A skill might apply ONLY at `horizons=[3m, 6m] ∩ expression_types=[equity-long] ∩ sectors=[tech_hardware]`. Narrowly tagged, narrowly applied. Each slicing dimension is independent.
+
+### `NoAction` is a peer, not a sub-type
+
+```
+ActionOrNoAction = TradeAction | NoAction
+
+NoAction { decision_time: datetime, reason: str }
+```
+
+`NoAction` has no payoff structure to evaluate. Scored separately by Stone 13 — was the gap correctly below the cost threshold? Different scoring path from any `TradeAction`.
+
+### In code
+
+- `expression_type` field on scoreboard row.
+- `TradeAction` typed in `src/fingym/agents/contract.py` (Phase 0 substep 6 deliverable).
+- Per-expression-type aggregations: `scoreboard.filter(expression_type==X).mean(...)`.
+
+---
+
 ## How this document grows
 
 Each stone that introduces new formal notation adds an entry here, organized by stone number. Cross-references:
@@ -312,7 +385,6 @@ A formula entry must include: the formula or symbol, plain-language description,
 
 ### Upcoming entries (parked, to be filled in as taught)
 
-- Expression-type payoff structures (Stone 11)
 - Market-delta scoring formula (Stone 11a)
 - Process-quality metric (Stone 12)
 - Decision-quality with NoAction first-class (Stone 13)
