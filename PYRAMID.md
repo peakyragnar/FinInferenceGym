@@ -61,7 +61,7 @@ The complete plan, by layer. Stones taught and committed are marked **✅**; sto
 - Stone 5 ✅ — what makes a scoring rule "proper"
 - Stone 6 ✅ — the Brier score, formula and properties
 - Stone 7 ✅ — the log score, formula and Cromwell
-- Stone 7a ⬜ — **the four-thing decomposition** (`S_true`, `P_AI(S)`, `P_market(S)`, `Action(A)`). Bridge from Layer 1 to Layer 2: Layer 1 scored a belief vs reality; Layer 2 scores a belief vs a *competing belief* (the market's), arbitrated by reality. Anchor: money lives in `P_AI − P_market` only when an `Action(A)` monetizes it after costs *and* `S_true` validates the side. Runnable toy: `uv run python -m fingym.toys.four_thing_decomp` ([src/fingym/toys/four_thing_decomp.py](src/fingym/toys/four_thing_decomp.py)). Symbols in [FORMULAS.md](FORMULAS.md). Full distilled summary in Layer 1 body below.
+- Stone 7a ✅ — **the four-thing decomposition** (`S_true`, `P_AI(S)`, `P_market(S)`, `Action(A)`). Bridge from Layer 1 to Layer 2: Layer 1 scored a belief vs reality; Layer 2 scores a belief vs a *competing belief* (the market's), arbitrated by reality. Anchor: money lives in `P_AI − P_market` only when an `Action(A)` monetizes it after costs *and* `S_true` validates the side. Runnable toy: `uv run python -m fingym.toys.four_thing_decomp` ([src/fingym/toys/four_thing_decomp.py](src/fingym/toys/four_thing_decomp.py)). Symbols in [FORMULAS.md](FORMULAS.md). Full distilled summary in Layer 1 body below.
 
 ### Layer 2 — The evaluator's math ⬜ (Phase 0, substep 4b/4c)
 - Stone 8 ✅ — calibration curves and reliability diagrams. Measures whether the agent's confidence language matches reality at scale. Runnable toy: `uv run python -m fingym.toys.calibration_diagram`. Full summary in Layer 2 body below.
