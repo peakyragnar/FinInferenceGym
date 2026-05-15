@@ -23,6 +23,7 @@ For project ethos, see [AGENTS.md](AGENTS.md). For architectural commitments, se
 - **[PYRAMID.md](PYRAMID.md)** — running teaching state. Each conceptual stone of the build is taught here in plain language **before** the code lands. Load alongside PROGRESS.md to see *what's been explained* in addition to *where we are*. Auditability requires it.
 - **[memory-design.md](memory-design.md)** — committed memory architecture (four-tier L0-L3 pyramid, promotion gate, git-backed YAML), the deferral list with revisit triggers, and the research evaluated. Source of truth for everything memory-related; expansion of TECHNICAL.md's memory section.
 - **[CONTRACT.md](CONTRACT.md)** — MVP spec for the structured terminal output every agent emits (the `Contract` object). Required fields, deferred-field list with triggers, validation rules. Source of truth for the model interface contract; companion to memory-design.md.
+- **[FORMULAS.md](FORMULAS.md)** — formal symbols and mathematical notation reference. Grouped by the stone that introduces each. Companion to DEFINITIONS.md (which is prose). Use FORMULAS when you need the exact formula, symbol, or property of a math primitive; use DEFINITIONS for the concept in plain language.
 - **[DECISIONS.md](DECISIONS.md)** — log of alternatives proposed and rejected. Do not re-litigate.
 - **[BIAS_PATTERNS.md](BIAS_PATTERNS.md)** — specific bias-smuggling patterns to challenge aggressively when they reappear.
 - **[AGENTS.md](AGENTS.md)** — minimal pointer file (for non-Claude agents). Just routes to CLAUDE.md.

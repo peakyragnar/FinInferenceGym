@@ -14,10 +14,11 @@ Project is FinInferenceGym. Before responding to anything else, read these files
   5. PROGRESS.md
   6. PYRAMID.md
   7. memory-design.md
-  8. DECISIONS.md
-  9. BIAS_PATTERNS.md
-  10. DEFINITIONS.md
-  11. intuitions.md
+  8. FORMULAS.md
+  9. DECISIONS.md
+  10. BIAS_PATTERNS.md
+  11. DEFINITIONS.md
+  12. intuitions.md
 
 (AGENTS.md is just a pointer to CLAUDE.md and can be skipped.)
 

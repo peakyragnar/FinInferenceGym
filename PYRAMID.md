@@ -61,7 +61,7 @@ The complete plan, by layer. Stones taught and committed are marked **✅**; sto
 - Stone 5 ✅ — what makes a scoring rule "proper"
 - Stone 6 ✅ — the Brier score, formula and properties
 - Stone 7 ✅ — the log score, formula and Cromwell
-- Stone 7a ⬜ — **the four-thing decomposition** (bridge from Layer 1 to Layer 2). Vocabulary: `S_true` (the actual hidden state), `P_AI(S)` (the agent's belief), `P_market(S)` (the market's belief, recoverable from price/options/spreads), `Action(A)` (the action that monetizes the gap). Layer 1 scored a belief in isolation; Layer 2 scores beliefs in relation to a competing believer. **Money lives in the gap between `P_AI(S)` and `P_market(S)` only when an `Action(A)` exists whose payoff distribution monetizes that disagreement after costs.** This vocabulary is the foundation for Stones 8–14 and the contract spec ([CONTRACT.md](CONTRACT.md)); without it, "well-calibrated" gets confused with "has edge." Anchored in [DESIGN.md](DESIGN.md) Architectural Physics and [DEFINITIONS.md](DEFINITIONS.md). Runnable toy that visualizes the three scenarios on actual numbers: `uv run python -m fingym.toys.four_thing_decomp` ([src/fingym/toys/four_thing_decomp.py](src/fingym/toys/four_thing_decomp.py)).
+- Stone 7a ⬜ — **the four-thing decomposition** (`S_true`, `P_AI(S)`, `P_market(S)`, `Action(A)`). Bridge from Layer 1 to Layer 2: Layer 1 scored a belief vs reality; Layer 2 scores a belief vs a *competing belief* (the market's), arbitrated by reality. Anchor: money lives in `P_AI − P_market` only when an `Action(A)` monetizes it after costs *and* `S_true` validates the side. Runnable toy: `uv run python -m fingym.toys.four_thing_decomp` ([src/fingym/toys/four_thing_decomp.py](src/fingym/toys/four_thing_decomp.py)). Symbols in [FORMULAS.md](FORMULAS.md). Full distilled summary in Layer 1 body below.
 
 ### Layer 2 — The evaluator's math ⬜ (Phase 0, substep 4b/4c)
 - Stone 8 ⬜ — calibration curves and reliability diagrams
@@ -305,7 +305,53 @@ Both proper. Both reward `r = q`. Run both — different failure modes surface i
 
 ---
 
-**Layer 1 — atom of inference — complete.** Belief, outcome, label, score signature, why-belief-not-outcome, properness, Brier, log score. Both canonical proper scoring rules are conceptually grounded AND implemented in `src/fingym/evaluator/scoring.py` (substep 4a). Next: **Layer 2 — the evaluator's math** (calibration curves, scoreboard assembly, multi-horizon and expression-type aggregation).
+### Stone 7a — the four-thing decomposition (bridge to Layer 2)
+
+In Layer 1 the game had two players: agent vs reality. **Layer 2 adds a third: the market.** Stone 7a is the vocabulary that makes the three-player game explicit.
+
+**Four primitives.** All separate. All per-horizon.
+
+- **`S_true`** — what's actually true. One value from a fixed set of hypotheses (e.g., `{strengthening, stable, decaying}`). Revealed at the horizon; not known at decision time.
+- **`P_AI(S)`** — the agent's belief. Distribution over the same set, sums to `1`. The thing Layer 1 scored.
+- **`P_market(S)`** — the market's belief. Distribution of identical shape. Not announced directly; recoverable from observable prices (Phase 2 mechanism, Stone 31). Toy worlds construct it directly.
+- **`Action(A)`** — the action. Typed sum: `TradeAction(...) | NoAction`. `NoAction` is a peer of `TradeAction`, not a sized-down version.
+
+**Derived symbol.** `belief_delta(S) = P_AI(S) − P_market(S)`. The gap, per state. Signed real per state; sums to zero across states. The evaluator focuses on `belief_delta(S_true)` — the gap on the realized truth.
+
+**Anchor.**
+
+> Money lives in `belief_delta = P_AI(S) − P_market(S)` only when an `Action(A)` exists whose payoff distribution monetizes that gap after costs, **and the realized `S_true` validates the side the agent took.**
+
+Four conditions, all required: disagreement (gap ≠ 0), agent correct (gap positive on truth, not negative), actionable (an `Action(A)` exists), survives costs. If any link fails, no edge.
+
+**The Layer-2 reframe.** Layer 1 scored `P_AI` alone. Layer 2 stones each measure one aspect of the four primitives:
+
+| Stone | What it measures |
+|---|---|
+| 8 calibration curves | Does `P_AI(S)` track `S_true` at the bucket level? |
+| 9 scoreboard | All metrics per `Contract`, kept as columns |
+| 10 multi-horizon | The four primitives, per horizon, scored independently |
+| 11 expression types | Which `TradeAction(A)` sub-type was chosen? |
+| 11a market-delta | Score `belief_delta(S_true)` — the gap on the truth |
+| 12 process-quality | Did `P_AI(S)` update on emissions, or drift to track `P_market(S)`? |
+| 13 decision-quality | Given `P_AI`, `P_market`, costs, did `Action(A)` make sense? `NoAction` rewarded when gap < costs |
+| 14 capacity-adjusted | At deployable size, does the gap survive market impact? |
+
+**Why "no edge" is a typed first-class output.** Most of the time, `belief_delta ≈ 0` (agreement) or `|belief_delta| < costs`. The correct `Action(A)` is `NoAction`. The system rewards saying "no edge" accurately. BIAS_PATTERNS #12 (trade-for-trade's-sake) names the failure of an agent that always finds trades.
+
+**Runnable toy.** Three scenarios — calibrated+monetizable, calibrated+no-gap, confident+wrong+big-gap — on actual numbers, with the four primitives computed for each. Brier alone cannot distinguish them; the four-thing scoreboard can.
+
+```bash
+uv run python -m fingym.toys.four_thing_decomp
+```
+
+Source: [src/fingym/toys/four_thing_decomp.py](src/fingym/toys/four_thing_decomp.py).
+
+**What's deliberately unanswered.** Stone 7a is vocabulary. Stones 8–14 measure with it. Stone 31 (Phase 2) implements `P_market(S)` recovery from real markets. Formal symbol definitions, ranges, and properties live in [FORMULAS.md](FORMULAS.md).
+
+---
+
+**Layer 1 — atom of inference — complete (with Stone 7a as bridge to Layer 2).** Belief, outcome, label, score signature, why-belief-not-outcome, properness, Brier, log score, four-thing decomposition. The Layer-1 scoring functions are implemented in `src/fingym/evaluator/scoring.py` (substep 4a); the four-thing decomposition is demonstrated in `src/fingym/toys/four_thing_decomp.py`. Next: **Layer 2 — the evaluator's math** (calibration curves, scoreboard assembly, multi-horizon and expression-type aggregation, plus market-delta and NoAction-first-class decision quality per v2).
 
 ---
 
