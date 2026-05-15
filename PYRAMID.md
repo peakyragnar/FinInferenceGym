@@ -64,7 +64,7 @@ The complete plan, by layer. Stones taught and committed are marked **✅**; sto
 - Stone 7a ⬜ — **the four-thing decomposition** (`S_true`, `P_AI(S)`, `P_market(S)`, `Action(A)`). Bridge from Layer 1 to Layer 2: Layer 1 scored a belief vs reality; Layer 2 scores a belief vs a *competing belief* (the market's), arbitrated by reality. Anchor: money lives in `P_AI − P_market` only when an `Action(A)` monetizes it after costs *and* `S_true` validates the side. Runnable toy: `uv run python -m fingym.toys.four_thing_decomp` ([src/fingym/toys/four_thing_decomp.py](src/fingym/toys/four_thing_decomp.py)). Symbols in [FORMULAS.md](FORMULAS.md). Full distilled summary in Layer 1 body below.
 
 ### Layer 2 — The evaluator's math ⬜ (Phase 0, substep 4b/4c)
-- Stone 8 ⬜ — calibration curves and reliability diagrams
+- Stone 8 ✅ — calibration curves and reliability diagrams. Measures whether the agent's confidence language matches reality at scale. Runnable toy: `uv run python -m fingym.toys.calibration_diagram`. Full summary in Layer 2 body below.
 - Stone 9 ⬜ — scoreboard assembly (multi-column data structure holding parallel scoring functions)
 - Stone 10 ⬜ — multi-horizon scoring (1m / 3m / 6m / 1y in parallel)
 - Stone 11 ⬜ — expression-type tagging within `TradeAction` (action-space-aware scoring; equity-long / equity-short / option-call / option-put / option-spread / option-straddle / vol-long / vol-short / pair). `NoAction` is a typed peer of `TradeAction`, not a sub-type of it — handled by Stone 13, not folded in here.
@@ -352,6 +352,74 @@ Source: [src/fingym/toys/four_thing_decomp.py](src/fingym/toys/four_thing_decomp
 ---
 
 **Layer 1 — atom of inference — complete (with Stone 7a as bridge to Layer 2).** Belief, outcome, label, score signature, why-belief-not-outcome, properness, Brier, log score, four-thing decomposition. The Layer-1 scoring functions are implemented in `src/fingym/evaluator/scoring.py` (substep 4a); the four-thing decomposition is demonstrated in `src/fingym/toys/four_thing_decomp.py`. Next: **Layer 2 — the evaluator's math** (calibration curves, scoreboard assembly, multi-horizon and expression-type aggregation, plus market-delta and NoAction-first-class decision quality per v2).
+
+---
+
+---
+
+## Layer 2 — The evaluator's math
+
+### Stone 8 — calibration curves and reliability diagrams
+
+**The question.** When the agent says "X percent confident," does the truth actually happen X percent of the time?
+
+This cannot be answered from any single prediction. It is a statistical property of the agent visible only across many predictions.
+
+**The procedure — count, group, compare.** Given many predictions from one agent with their actual outcomes:
+
+1. **Group** predictions by the claim. All predictions where the agent said ~40%. All where it said ~70%. Etc.
+2. For each group, compute two numbers: **Mean claim** (what the agent said, averaged) and **Observed rate** (fraction of those predictions where the positive outcome actually happened).
+3. If claim ≈ observed, the agent is calibrated for that group.
+4. If claim > observed, the agent is overconfident in that group.
+5. If claim < observed, the agent is underconfident in that group.
+
+**Worked example.** Three adversarial agents, 200 binary events each (true probabilities mixed from {40%, 60%, 80%}; base rate ≈ 60%). Runnable toy: `uv run python -m fingym.toys.calibration_diagram`.
+
+**Agent W (well-calibrated, says true probability):**
+
+| Bucket | # events | Mean claim | Observed | Gap |
+|---|---:|---:|---:|---:|
+| 40-50% | 73 | 40.0% | 34.2% | 5.8 |
+| 60-70% | 65 | 60.0% | 66.2% | 6.2 |
+| 80-90% | 62 | 80.0% | 74.2% | 5.8 |
+
+Calibration error: **5.9 pp**. Small gaps in every bucket — sampling noise from only 200 events. The agent is calibrated.
+
+**Agent O (confidently-wrong, pushes claims to extremes 10% or 90%):**
+
+| Bucket | # events | Mean claim | Observed | Gap |
+|---|---:|---:|---:|---:|
+| 10-20% | 73 | 10.0% | 34.2% | 24.2 |
+| 90-100% | 127 | 90.0% | 70.1% | 19.9 |
+
+Calibration error: **21.5 pp**. When O said 90%, reality was only 70%. When it said 10%, reality was 34%. Big gaps in both directions.
+
+**Agent U (always-50%, ignores evidence):**
+
+| Bucket | # events | Mean claim | Observed | Gap |
+|---|---:|---:|---:|---:|
+| 50-60% | 200 | 50.0% | 57.0% | 7.0 |
+
+Calibration error: **7.0 pp**. One bucket. Agent has no discriminative value — it cannot distinguish a 40% event from an 80% event.
+
+**The single-number summary (Expected Calibration Error, ECE).** Weighted average of bucket gaps: per bucket, multiply gap by # events; sum across buckets; divide by total events. One number per agent that ranks them.
+
+**Important limitation.** ECE is a summary; the reliability table is the diagnostic. Agent U's ECE (7.0) looks similar to W's (5.9), but U's single-bucket structure gives the game away. **Calibration alone is necessary, not sufficient.** Combine with Layer-1 scoring rules (Brier, log score) to catch uninformative agents that have low ECE by accident.
+
+**The three classic signatures:**
+
+| Signature | What the table shows | Reading |
+|---|---|---|
+| Calibrated | Many buckets, claim ≈ observed each row | Trustable across confidence levels |
+| Overconfident | Buckets at extremes (10%, 90%) with claim much higher than observed | When agent says 90%, treat it as ~70% |
+| Underconfident | Buckets where claim < observed | Agent is hedging; could have claimed more |
+| Uninformative | One bucket only; observed ≈ base rate | Useless even if ECE is low |
+
+**Connection to Layer 1.** Layer 1 scored P_AI on single predictions (Brier, log score per row). Stone 8 scores P_AI across many predictions. Both are about the agent's belief in isolation. Stone 11a will introduce the gap between P_AI and P_market.
+
+**Runnable toy.** [src/fingym/toys/calibration_diagram.py](src/fingym/toys/calibration_diagram.py). Try: change `true_probs = [0.4, 0.6, 0.8]` to `[0.2, 0.5, 0.8]` — base rate becomes 50%, agent U's ECE drops near zero, and U *looks* calibrated even though it has zero discrimination. That's the discrimination point made vivid.
+
+**Formal symbols.** Reference notation lives in [FORMULAS.md](FORMULAS.md) under "Calibration measurement (Stone 8)." Not needed for understanding; provided for code/agent reference.
 
 ---
 

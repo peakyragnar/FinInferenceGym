@@ -133,6 +133,66 @@ P_AI_new(h) = likelihood(evidence | h) × P_AI_old(h) / Σ_h' [ likelihood(evide
 
 ---
 
+## Calibration measurement (Stone 8)
+
+Layer-2 measurement of `P_AI` calibration across many predictions. Concrete worked example with tables in [PYRAMID.md](PYRAMID.md) Stone 8 summary; runnable toy at [src/fingym/toys/calibration_diagram.py](src/fingym/toys/calibration_diagram.py).
+
+### Setup
+
+Given `N` predictions from one agent. For each prediction `i`:
+
+- `q_i` — the agent's stated probability for the positive class (binary case)
+- `y_i` — `1` if the positive outcome actually happened, `0` otherwise
+
+### Bucketing
+
+Choose `B` (typically `10`). Divide `[0, 1]` into `B` equal-width intervals. Each prediction's `q_i` falls in exactly one bucket. Let `B_b` denote the set of predictions whose `q_i` falls in bucket `b`.
+
+Convention: bucket `b` covers `[b/B, (b+1)/B)` — lower edge included, upper edge excluded, except the last bucket which includes `1.0`.
+
+### Per-bucket statistics
+
+```
+claim(b) = (1 / |B_b|) × Σ_{i ∈ B_b} q_i        # mean claim in the bucket
+obs(b)   = (1 / |B_b|) × Σ_{i ∈ B_b} y_i        # observed frequency in the bucket
+gap(b)   = | claim(b) − obs(b) |                # absolute discrepancy
+```
+
+Calibrated bucket: `claim(b) ≈ obs(b)`. Plotting `(claim(b), obs(b))` per bucket gives the reliability diagram; the line `obs = claim` is perfect calibration.
+
+### Expected Calibration Error (ECE)
+
+```
+ECE = (1 / N) × Σ_b |B_b| × gap(b)
+```
+
+- Range: `[0, 1]` (or `0–100` percentage points).
+- Min (perfect): `0.0` when every bucket has `claim(b) = obs(b)`.
+- A weighted average of per-bucket gaps; larger buckets dominate.
+
+### Multi-class extension (top-label calibration)
+
+For multi-class `P_AI`:
+
+```
+q_i = max_h P_AI_i(h)                           # confidence on the agent's top guess
+y_i = 1 if argmax_h P_AI_i(h) == S_true_i else 0
+```
+
+Reduces multi-class to binary; bucket and score as above.
+
+### Important property — calibration is necessary, not sufficient
+
+An uninformative agent (always says `0.5`) can achieve low ECE when the base rate is near `0.5`. ECE alone does not detect this; pair with Brier and log score, which both punish uninformative agents.
+
+The reliability **table** (per-bucket gap structure) is the diagnostic; ECE is the summary. A one-bucket table with low ECE is a red flag — the agent has no discrimination.
+
+### In code
+
+Toy implementation: `src/fingym/toys/calibration_diagram.py`. To be lifted into `src/fingym/evaluator/` as a proper scoreboard component when substep 4b assembles the multi-column evaluator.
+
+---
+
 ## How this document grows
 
 Each stone that introduces new formal notation adds an entry here, organized by stone number. Cross-references:
@@ -145,8 +205,6 @@ A formula entry must include: the formula or symbol, plain-language description,
 
 ### Upcoming entries (parked, to be filled in as taught)
 
-- Calibration curve / reliability diagram (Stone 8)
-- Calibration error / Expected Calibration Error (ECE) (Stone 8)
 - Scoreboard aggregation operators (Stone 9)
 - Multi-horizon scoring composition (Stone 10)
 - Expression-type payoff structures (Stone 11)
