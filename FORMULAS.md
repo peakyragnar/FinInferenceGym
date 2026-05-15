@@ -253,6 +253,53 @@ Scoreboard row {
 
 ---
 
+## Multi-horizon scoring (Stone 10)
+
+State is per-horizon by default. A single decision-time produces multiple `Contract` rows, one per horizon the agent cares about. The scoreboard's `horizon` column distinguishes them; per-horizon aggregations and per-horizon promotion gates fall out of slicing by that column.
+
+### Setup
+
+- `horizons: list[Horizon]` — configurable per evaluator run. Standard: `["1m", "3m", "6m", "1y"]`. Toys may use shorter (days or flips).
+- For each decision-time `t` and each horizon `h`, the agent emits one Contract.
+- `S_true(t, h)` — the truth as of time `t + h`. Distinct per horizon; revealed at horizon.
+
+### Per-horizon scoring
+
+Each Contract's evaluation columns (Brier, log_score, claim_bucket, etc.) are computed against `S_true(t, h)` — the truth at *that horizon*, not at the decision time.
+
+### Per-horizon aggregations
+
+```
+mean_brier_at_horizon(h)        = mean(scoreboard[horizon==h].brier)
+mean_log_score_at_horizon(h)    = mean(scoreboard[horizon==h].log_score where not cromwell)
+ece_at_horizon(h)               = ECE computed using only rows where horizon == h
+```
+
+### Per-horizon promotion gate
+
+The four-check promotion gate runs independently per horizon. A skill is promoted with a domain-of-validity `horizon` list containing exactly those horizons where all four checks passed:
+
+```
+candidate_skill.domain_of_validity.horizons = [
+    h for h in horizons
+    if held_out_calibration_improves(h)
+    and cross_model_regression_passes(h)
+    and survivorship_check_passes(h)
+]
+```
+
+At inference time, the agent operating at horizon `h_decision` only sees skills whose `domain_of_validity.horizons` includes `h_decision`.
+
+### In code
+
+- Contract carries `horizon: str` (see [CONTRACT.md](CONTRACT.md)).
+- Scoreboard row carries `horizon: str` column (see Stone 9 schema above).
+- Domain-of-validity in memory artifact carries `horizons: list[str]` (see [memory-design.md](memory-design.md)).
+
+The three structures align — a Contract's horizon is the row's horizon is the skill's authorized horizon.
+
+---
+
 ## How this document grows
 
 Each stone that introduces new formal notation adds an entry here, organized by stone number. Cross-references:
@@ -265,7 +312,6 @@ A formula entry must include: the formula or symbol, plain-language description,
 
 ### Upcoming entries (parked, to be filled in as taught)
 
-- Multi-horizon scoring composition (Stone 10)
 - Expression-type payoff structures (Stone 11)
 - Market-delta scoring formula (Stone 11a)
 - Process-quality metric (Stone 12)

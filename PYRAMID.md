@@ -66,7 +66,7 @@ The complete plan, by layer. Stones taught and committed are marked **✅**; sto
 ### Layer 2 — The evaluator's math ⬜ (Phase 0, substep 4b/4c)
 - Stone 8 ✅ — calibration curves and reliability diagrams. Measures whether the agent's confidence language matches reality at scale. Runnable toy: `uv run python -m fingym.toys.calibration_diagram`. Full summary in Layer 2 body below.
 - Stone 9 ✅ — scoreboard assembly. A table with one row per prediction and one column per scoring metric, plus metadata columns (date, horizon, expression-type, agent_id) for slicing. Kept decomposed by default; collapsed to single numbers only at explicit decision points with declared rules. Full summary in Layer 2 body below.
-- Stone 10 ⬜ — multi-horizon scoring (1m / 3m / 6m / 1y in parallel)
+- Stone 10 ✅ — multi-horizon scoring (1m / 3m / 6m / 1y in parallel; horizon set is parameterizable, not hardcoded). Same decision time produces one Contract per horizon; each scored independently. The `horizon` column on the scoreboard enables per-horizon slicing for aggregation, per-horizon held-out replay at promotion, and per-horizon domain-of-validity tagging on promoted skills. Full summary in Layer 2 body below.
 - Stone 11 ⬜ — expression-type tagging within `TradeAction` (action-space-aware scoring; equity-long / equity-short / option-call / option-put / option-spread / option-straddle / vol-long / vol-short / pair). `NoAction` is a typed peer of `TradeAction`, not a sub-type of it — handled by Stone 13, not folded in here.
 - Stone 11a ⬜ — market-delta scoring (the agent's belief minus market-implied belief, scored against realized payoff). Distinguishes "well-calibrated but no edge" from "well-calibrated AND edge." Without this, the scoreboard cannot tell a calibrated agent that agrees with the market apart from a calibrated agent that monetizably disagrees. Operates on the `belief_delta` field of a `Contract` (see [CONTRACT.md](CONTRACT.md)). At Phase 0 the toy provides `P_market`; at Phase 2 the recovery mechanism (Stone 31) provides it for real markets.
 - Stone 12 ⬜ — process-quality flag (did the agent update on emissions vs price)
@@ -466,6 +466,54 @@ The scoreboard schema is locked at the structural level here; columns grow as ea
 **In code.** Schema lives in `src/fingym/evaluator/scoreboard.py` (Phase 0 substep 4b/4c deliverable). Row construction at evaluation time; aggregations and slicing performed by the evaluator's reporting layer.
 
 **One sentence.** The scoreboard is a table — one row per prediction, one column per scoring metric, plus metadata columns for slicing. Decomposed by default. Collapse only at explicit decision points with declared rules.
+
+### Stone 10 — multi-horizon scoring
+
+**The reframe.** "What is the hidden state?" is an incomplete question. The complete question is **"what is the hidden state, over this time window?"** Strengthening over the next month (cyclic dynamics) and strengthening over the next year (strategic positioning) are different claims about different things.
+
+**The mechanic.** A single decision-time produces multiple `Contract` objects — one per horizon the agent cares about. Each gets its own row in the scoreboard, distinguished by the `horizon` column.
+
+Example: agent's beliefs about AAPL at 2026-05-15:
+
+| Decision time | Company | Horizon | P_AI(strengthening) | Scored against |
+|---|---|---|---:|---|
+| 2026-05-15 | AAPL | 1m | 60% | AAPL's state at 2026-06-15 |
+| 2026-05-15 | AAPL | 3m | 55% | AAPL's state at 2026-08-15 |
+| 2026-05-15 | AAPL | 6m | 40% | AAPL's state at 2026-11-15 |
+| 2026-05-15 | AAPL | 1y | 30% | AAPL's state at 2027-05-15 |
+
+Four rows. Same agent. Same company. Same decision time. Four different futures to score against.
+
+**The discovered fact.** After running over time, the scoreboard's horizon slices tell you where each agent's edge lives:
+
+| Per-horizon performance | Brier | log_score | Calibration error |
+|---|---:|---:|---:|
+| 1m | 0.18 | 0.32 | 4 pp |
+| 3m | 0.21 | 0.40 | 6 pp |
+| 6m | 0.35 | 0.65 | 14 pp |
+| 1y | 0.42 | 0.85 | 22 pp |
+
+This agent is sharp at short horizons and degrades at long ones. That's a discovered fact, not a pre-commitment. The system never pre-commits to "we are a quarterly system" or "we are a year-horizon system." It discovers per-agent, per-sector, per-skill where edge actually lives. (DESIGN.md "Operational Constraints" — multi-horizon scoring.)
+
+**Per-horizon promotion gate.** The four-check promotion gate (DESIGN.md #4) runs **per horizon, independently.** A candidate skill is promoted with `horizon: [list]` in its domain-of-validity listing the specific horizons where all four checks passed:
+
+| Check at horizon | 1m | 3m | 6m | 1y |
+|---|:---:|:---:|:---:|:---:|
+| Held-out calibration improves | ✓ | ✓ | ✓ | ✗ |
+| Cross-model (≥2 engines) | ✓ | ✓ | ✓ | (n/a) |
+| Survivorship check | ✓ | ✓ | ✓ | (n/a) |
+
+→ Promoted with `horizon: [1m, 3m, 6m]`. **Excluded from 1y context** by the domain-of-validity filter. At inference time, an agent operating at 1y horizon never sees this skill.
+
+This is what prevents the "skill that worked at 3m leaks into 1y and corrupts long-horizon calls" failure mode. The horizon column on the scoreboard is what enables both per-horizon promotion testing and per-horizon inference-time filtering.
+
+**Parameterizable.** The set of horizons is configurable per agent or per evaluator run, not hardcoded. Standard set: `{1m, 3m, 6m, 1y}`. Toys may use shorter horizons (days or flips) for fast iteration. New horizons can be added without architectural change.
+
+**Connection to memory architecture.** Per [memory-design.md](memory-design.md), every L3 promoted skill carries its horizon list. Per [CONTRACT.md](CONTRACT.md), every Contract carries a horizon field. Per the Stone 9 scoreboard schema, every row carries a horizon column. The three structures align by design.
+
+**No new structural machinery.** Multi-horizon scoring is the Stone 9 scoreboard *used correctly* — slicing by an existing column. The conceptual move is bigger than the implementation: state is per-horizon by default; the agent's job is per-horizon forecasting; the evaluator's job is per-horizon scoring.
+
+**One sentence.** The same belief means different things at different horizons; the agent emits one Contract per horizon; the scoreboard scores each independently; the system discovers where each agent's edge lives empirically — and the per-horizon promotion gate ensures skills only act where they're validated.
 
 ---
 
