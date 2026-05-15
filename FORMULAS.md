@@ -373,6 +373,71 @@ NoAction { decision_time: datetime, reason: str }
 
 ---
 
+## Market-delta scoring (Stone 11a)
+
+The first scoreboard column that takes `P_market` into the math. Operationalizes the four-thing decomposition's monetization layer. Concrete worked example in [PYRAMID.md](PYRAMID.md) Stone 11a body and [src/fingym/toys/market_delta_scoring.py](src/fingym/toys/market_delta_scoring.py).
+
+### Per-row formula
+
+```
+belief_delta_on_truth = P_AI(S_true) - P_market(S_true)
+```
+
+- **Inputs:** the agent's belief, the market's belief, the revealed truth.
+- **Range:** `[-1, +1]`.
+- **Sign convention:**
+  - `> 0` — agent more confident on truth than market (edge)
+  - `= 0` — agreement (no edge to extract)
+  - `< 0` — agent less confident on truth than market (anti-edge)
+
+### Aggregation
+
+```
+mean_gap_on_truth = mean over all scoreboard rows of belief_delta_on_truth
+```
+
+Aggregations follow Stone 9's scoreboard discipline — can be sliced by `horizon`, `expression_type`, `sector`, `agent_id`, etc.
+
+### Sliceable comparisons
+
+```
+mean_gap_at_horizon(h)        = mean(rows where horizon==h).belief_delta_on_truth
+mean_gap_for_expression(e)    = mean(rows where expression_type==e).belief_delta_on_truth
+```
+
+Tells you where (which horizon, which expression-type) the agent's edge actually lives.
+
+### Independence from Layer 1
+
+`belief_delta_on_truth` is structurally independent of Brier and log_score:
+
+- Brier and log_score use only `(P_AI, S_true)`. They don't see `P_market`.
+- `belief_delta_on_truth` uses `(P_AI, P_market, S_true)`. It alone sees the market.
+
+Same `(P_AI, S_true)` → identical Brier and log_score; varying `P_market` → varying `belief_delta_on_truth`. The toy demonstrates this.
+
+### Used by the promotion gate
+
+A candidate skill at promotion time is checked for whether it improves the mean `belief_delta_on_truth` on held-out data — not just whether it improves Brier. A skill that produces better-calibrated beliefs that happen to agree with the market doesn't produce edge.
+
+### `P_market` source
+
+- **Phase 0 (toys):** `P_market` constructed directly by the test scaffold.
+- **Phase 2 (real markets):** `P_market` recovered from observable prices via the inversion mechanism (Stone 31 — implied DCF, options-implied probabilities, implied volatility). Recovery is approximate; the structural gap is still surfaced.
+
+### Connection forward
+
+- Stone 13 (decision-quality): uses `belief_delta` plus the chosen `Action(A)` to score whether the action sensibly captures the gap.
+- Stone 14 (capacity-adjusted return): uses `belief_delta` plus market-impact model to score whether the gap survives at deployable size.
+
+### In code
+
+- `belief_delta` field on each Contract (see [CONTRACT.md](CONTRACT.md), Phase 0 substep 6 deliverable).
+- `belief_delta_on_truth` column on scoreboard row (Stone 9 schema, populated at horizon when `S_true` is revealed).
+- Toy: `src/fingym/toys/market_delta_scoring.py`.
+
+---
+
 ## How this document grows
 
 Each stone that introduces new formal notation adds an entry here, organized by stone number. Cross-references:
@@ -385,7 +450,6 @@ A formula entry must include: the formula or symbol, plain-language description,
 
 ### Upcoming entries (parked, to be filled in as taught)
 
-- Market-delta scoring formula (Stone 11a)
 - Process-quality metric (Stone 12)
 - Decision-quality with NoAction first-class (Stone 13)
 - Capacity-adjusted return: `edge_realized = nominal_edge − market_impact(size)` (Stone 14)

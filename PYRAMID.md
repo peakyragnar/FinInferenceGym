@@ -68,7 +68,7 @@ The complete plan, by layer. Stones taught and committed are marked **✅**; sto
 - Stone 9 ✅ — scoreboard assembly. A table with one row per prediction and one column per scoring metric, plus metadata columns (date, horizon, expression-type, agent_id) for slicing. Kept decomposed by default; collapsed to single numbers only at explicit decision points with declared rules. Full summary in Layer 2 body below.
 - Stone 10 ✅ — multi-horizon scoring (1m / 3m / 6m / 1y in parallel; horizon set is parameterizable, not hardcoded). Same decision time produces one Contract per horizon; each scored independently. The `horizon` column on the scoreboard enables per-horizon slicing for aggregation, per-horizon held-out replay at promotion, and per-horizon domain-of-validity tagging on promoted skills. Full summary in Layer 2 body below.
 - Stone 11 ✅ — expression-type tagging within `TradeAction`. Same belief can be expressed many ways (equity-long, option-call, option-spread, vol-long, pair, etc.) with different payoff structures. The scoreboard carries `expression_type` as the broad category; specific trade details (strike, expiration, size, premium) live inside the `TradeAction` object on the Contract. Per-expression-type promotion gate. `NoAction` is a typed peer, not folded here. Full summary in Layer 2 body below.
-- Stone 11a ⬜ — market-delta scoring (the agent's belief minus market-implied belief, scored against realized payoff). Distinguishes "well-calibrated but no edge" from "well-calibrated AND edge." Without this, the scoreboard cannot tell a calibrated agent that agrees with the market apart from a calibrated agent that monetizably disagrees. Operates on the `belief_delta` field of a `Contract` (see [CONTRACT.md](CONTRACT.md)). At Phase 0 the toy provides `P_market`; at Phase 2 the recovery mechanism (Stone 31) provides it for real markets.
+- Stone 11a ✅ — market-delta scoring. The first scoreboard column that takes `P_market` into the math. Per-row value: `belief_delta_on_truth = P_AI(S_true) - P_market(S_true)`. Positive = monetizable edge; zero = no edge; negative = anti-edge. Distinguishes the three situations Layer 1 alone cannot see. Runnable toy: `uv run python -m fingym.toys.market_delta_scoring`. Full summary in Layer 2 body below.
 - Stone 12 ⬜ — process-quality flag (did the agent update on emissions vs price)
 - Stone 13 ⬜ — decision-quality score (action vs belief, given payoff structure), including `NoAction` as first-class. Scores: (a) did the agent correctly choose `NoAction` when calibrated `belief_delta` was below cost threshold, (b) when the agent chose `TradeAction`, did the expression match the belief shape (e.g., long-vol when belief is high-uncertainty). `NoAction` is scored separately, never collapsed to `size = 0` of a `TradeAction`. The `NoAction`-correct-when-no-edge case is explicitly rewarded — DESIGN.md Operational Constraints, BIAS_PATTERNS #12 (trade-for-trade's-sake).
 - Stone 14 ⬜ — capacity-adjusted return (edge at deployable size, not nominal size)
@@ -579,6 +579,72 @@ Agent's action layer:
 **In code.** `expression_type` is a string field on the scoreboard row (Stone 9 schema); `TradeAction` is the typed sum from [CONTRACT.md](CONTRACT.md). The full `TradeAction` object is stored alongside the scoreboard row for downstream payoff computation.
 
 **One sentence.** `TradeAction` has sub-types (equity-long, option-call, vol-spread, pair, …); `expression_type` on the scoreboard is the broad category for slicing; specific trade details live inside the `TradeAction` object; per-expression-type promotion gate ensures skills only act in expression contexts where they've been validated; `NoAction` is a typed peer of `TradeAction`, handled by Stone 13.
+
+### Stone 11a — market-delta scoring
+
+**Why this stone is load-bearing.** Stones 6-10 measured the agent's belief in isolation. Brier, log score, calibration error — all use only `P_AI` and `S_true`. None of them know `P_market` exists. So a calibrated agent that agrees with the market and a calibrated agent that disagrees with the market on the right side get identical Layer-1 scores. **Edge is invisible to Layer 1.**
+
+Stone 11a is the first column on the scoreboard that takes `P_market` into the math, making the four-thing decomposition's monetization layer measurable.
+
+**The value computed per row.** For each Contract, the `belief_delta_on_truth` column stores:
+
+```
+P_AI(S_true) - P_market(S_true)
+```
+
+Signed gap. Positive means the agent was more confident on the truth than the market (edge). Zero means agreement (no edge). Negative means anti-edge (market saw it, agent didn't).
+
+**Worked example (from the runnable toy).** Same agent belief `{strengthening: 0.55, stable: 0.30, decaying: 0.15}`; same outcome `S_true = strengthening`. Only `P_market` varies.
+
+| Scenario | `P_market(strg)` | Brier | log_score | Gap on truth |
+|---|---:|---:|---:|---:|
+| A: market bearish (real edge) | 30% | 0.3150 | 0.5978 | **+0.25** |
+| B: market agrees (no edge) | 55% | 0.3150 | 0.5978 | **0.00** |
+| C: market more confident (anti-edge) | 80% | 0.3150 | 0.5978 | **-0.25** |
+
+Brier and log_score IDENTICAL across all three. Gap column is what reveals the three different edge signatures. Layer 1 alone cannot distinguish them; Stone 11a can.
+
+**Two more revealing cases (also in the toy).** Agent confidently wrong on the truth: `{strengthening: 0.05, stable: 0.15, decaying: 0.80}`, same `S_true = strengthening`.
+
+| Scenario | `P_market(strg)` | Brier | log_score | Gap on truth |
+|---|---:|---:|---:|---:|
+| D: wrong + big disagreement (catastrophic) | 30% | 1.5650 | 2.9957 | **-0.25** |
+| E: both wrong + agree (no edge to lose) | 5% | 1.5650 | 2.9957 | **0.00** |
+
+D has three corroborating red flags (Brier max, log near-Cromwell, anti-edge gap). E has the same Layer-1 catastrophe but zero gap — the market was equally wrong, so there was no informational edge to lose. **Same Layer-1 signals; very different Layer-2 interpretation.** Stone 11a is what makes that distinction.
+
+**Aggregating across many rows.** Mean `belief_delta_on_truth` over time tells you whether the agent has systematic edge:
+
+| Mean Gap on truth | Interpretation |
+|---:|---|
+| > 0 (positive) | Agent systematically right where the market is wrong. Real edge over time. |
+| ≈ 0 | Agent systematically agrees with market. No informational edge — uninformative. |
+| < 0 (negative) | Agent systematically less confident on truth than market. Anti-edge — losing to smarter counterparties. |
+
+**The promotion-gate implication.** A candidate skill is judged not only on whether it improves calibration (Brier, log score) but on whether it improves mean Gap on truth. A skill that makes the belief better-shaped but doesn't change the gap isn't producing edge. A skill that increases the gap on the truth IS — even if its calibration improvement is modest. The two signals can move independently.
+
+**The Layer-2 picture now (after Stone 11a):**
+
+| Column | Sees | What it catches |
+|---|---|---|
+| Brier | P_AI, S_true | General miscalibration of belief |
+| log_score | P_AI, S_true | Near-Cromwell (confident-wrong on truth) |
+| **belief_delta_on_truth** | **P_AI, P_market, S_true** | **Edge / anti-edge / no-edge** |
+
+Three orthogonal signals. No single column suffices. Each lights up red for a different failure mode.
+
+**`P_market` source — toy vs production.** At Phase 0 (toys), `P_market` is constructed directly by the test scaffold. At Phase 2 (real markets), `P_market` is recovered from observable prices/options/spreads via the inversion mechanism (Stone 31). The recovery is approximate, but even approximate `P_market` is enough to surface the structural gap.
+
+**What Stone 11a does NOT do.** It measures the *potential* edge — the gap between agent and market beliefs. It does not yet account for:
+- Whether the agent chose an action that monetizes the gap (Stone 13).
+- Whether costs and capacity allow the gap to be realized (Stone 14).
+- Whether the agent updated `P_AI` on emissions vs price (Stone 12 — process quality).
+
+The gap is necessary for edge; subsequent stones add the sufficient conditions.
+
+**Runnable toy.** [src/fingym/toys/market_delta_scoring.py](src/fingym/toys/market_delta_scoring.py). Five scenarios; Brier and log_score stay constant within belief-groups while Gap varies with `P_market`. Source for the worked numbers above.
+
+**One sentence.** Stone 11a adds the first scoreboard column that takes `P_market` into the calculation; per-row value is the signed gap `P_AI(S_true) - P_market(S_true)`; positive means real edge, zero means agreement (no edge), negative means anti-edge; aggregating mean gap across many predictions reveals whether the agent has systematic edge — a signal Layer 1 calibration alone cannot detect.
 
 ---
 
