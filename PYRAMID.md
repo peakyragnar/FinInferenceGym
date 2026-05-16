@@ -40,7 +40,9 @@ The system is built up in layers. Each layer rests on the one below. A wrong lay
 
 **Infrastructure** (below the pyramid line) is not part of the project itself — it is the ground the pyramid stands on. Tooling gate (mypy strict, ruff, custom design lints, pre-commit), data substrate (Postgres 17 on Neon, alembic migrations), and the mechanism layer that enforces DESIGN.md at the code level. Built in Phase 0 substeps 1–2.
 
-**Current position:** Layers 1 and 2 complete; Layer 3 begun. Stones 1–7 (atom of inference), 7a (four-thing decomposition bridge), 8–14 (evaluator's math: calibration, scoreboard, multi-horizon, expression-type, market-delta, process-quality, decision-quality with NoAction as peer, capacity-adjusted return), and 15 (the 3-state synthetic-market toy — world + believer + two-believer scenario + Stone 11a scoreboard reproduction in `src/fingym/toys/synthetic_market.py`) all taught, distilled, and code-verified. Next: **Stones 16–21** (adversarial agents, evaluator validation, reliability diagrams as visual exit criterion, model interface contract, memory artifact schema, property tests) — Phase 0 substeps 5–8. Phase 0 exit is at the end of Layer 3.
+**Current position:** Layers 1, 2, and 3 complete — **Phase 0 closed 2026-05-16** (all 8 substeps green, all 4 exit criteria met, phase-gate audit passed). Stones 1–7 (atom of inference), 7a (four-thing decomposition bridge), 8–14 (evaluator's math), 15 (the 3-state synthetic-market toy in `src/fingym/toys/synthetic_market.py`), 16–18 (adversarial agents + ranking lock + reliability diagrams), 19 (Contract Protocol + validator + stub agent), 20 (memory artifact schema + illustrative L3 sample), 21 (8 hypothesis-based property tests for math invariants) all taught, distilled, and code-verified.
+
+**Phase 1 NEW begins — Toy Architecture Extension (Weeks 3–6).** Reordered 2026-05-16: rather than ingest real data next, the toy is extended *upward through the full architecture* first. Eight clusters (A–H, ~24–27 sub-stones) exercise market-implied belief recovery, action layer, cost models, multi-horizon scoring, PIT discipline + restatements + delisted analogs, LLM-driven agent, memory + promotion gate, and population mechanic — all in toy mode, where `S_true` is known and the labelling function is ours. Real data substitutes into the toy-trained architecture in **Phase 2 NEW** (Stones 22–28), one data type at a time. Synthetic still cannot validate alpha (per DESIGN.md "Three Arenas") — Phase 1 NEW validates every architectural property *except* alpha. See [DECISIONS.md "Constitution tightening v4: Phase 1 reorder"](DECISIONS.md#constitution-tightening-v4-2026-05-phase-1-reorder), [BUILD.md Phase 1](BUILD.md#phase-1--toy-architecture-extension-weeks-36), and [PROGRESS.md](PROGRESS.md). Next: **Cluster A — Stone 31 (market-implied belief recovery in the toy)**. Sub-stones 31a–d.
 
 ---
 
@@ -73,32 +75,36 @@ The complete plan, by layer. Stones taught and committed are marked **✅**; sto
 - Stone 13 ✅ — decision-quality score with `NoAction` as first-class peer. Three coherence checks on the action vs the inputs (belief, gap, costs) at decision time: **threshold-match** (trade iff gap > cost), **direction-match** (trade is on the right side of the gap), **expression-match** (expression type fits belief shape). Each Contract gets a coherence verdict and three independently stored sub-flags. `decision_quality_rate` is a scoreboard column, NOT a hard cap — incoherent decisions can be legitimate (crowding, hedging, atypical vol pricing) and the promotion gate weighs the column alongside `belief_delta` and held-out return. The lazy agent (always NoAction) is caught by combining with Stone 11a (near-zero mean gap). Full summary in Layer 2 body below.
 - Stone 14 ✅ — capacity-adjusted return. Per-Contract `realized_edge = nominal_edge − spread − commission − market_impact(size, ADV) − alpha_decay`. Square-root law for impact: impact grows with `sqrt(size / ADV)`. Aggregated as `mean_realized_edge` and the diagnostic ratio `realized_to_nominal`. Sliced primarily by **deployable size bucket** — different agents have different capacity profiles, and the gate evaluates per-size, not just per-aggregate. Column on scoreboard, NOT a hard cap (capacity is niche-specific) — with one near-tautological structural check: realized edge at the agent's stated size must be positive (otherwise it's not edge, it's a losing strategy). Full summary in Layer 2 body below.
 
-### Layer 3 — Evaluator validated on toys ⬜ (Phase 0, substeps 5–8)
+### Layer 3 — Evaluator validated on toys ✅ (Phase 0, substeps 5–8)
 - Stone 15 ✅ — the synthetic-market toy. Lives at `src/fingym/toys/synthetic_market.py` under mypy strict. Four-step build: (1) the world (likelihood table + emission sampler + frequency verification), (2) a single Bayesian believer over the 3 states, (3) two believers (agent + market) with different priors evolving on a shared emission stream plus `belief_delta` on truth tick-by-tick, (4) a fixed-scenario scoreboard reproducing PYRAMID Stone 11a's worked example exactly — Brier and log_score identical across the calibrated-agent rows; `belief_delta_on_truth` distinguishes edge / no-edge / anti-edge. `belief_delta_on_truth` added to `src/fingym/evaluator/scoring.py` alongside `brier` and `log_score`. Full distilled summary in Layer 3 body below.
-- Stone 16 ⬜ — adversarial agents (confidently-wrong, always-50%, well-calibrated)
-- Stone 17 ⬜ — validating the evaluator ranks the adversaries correctly on every scoreboard dimension
-- Stone 18 ⬜ — reliability diagrams as visual artifacts; the Phase 0 exit criterion
-- Stone 19 ⬜ — the model interface contract (typed Protocol: raw evidence → structured `Contract` object, spec'd in [CONTRACT.md](CONTRACT.md)). Required fields at Phase 0: decision_time, evidence_ids, hidden_state_hypotheses, ai_belief, market_implied_belief (toy), belief_delta, horizon, action_or_no_action, recommended_size, falsifiers, label_plan, cognitive_audit_trail, memory_update_proposal. Deferred fields (cost, slippage, capacity, payoff_distribution, expected_log_growth_after_costs) ship with Phase 2+ machinery. Scaffolding for Layer 5.
-- Stone 20 ⬜ — the memory artifact schema (versioned, model-readable, horizon/expression-tagged) — scaffolding for Layer 7
-- Stone 21 ⬜ — property tests for math invariants (Bayes commutativity, Kelly monotonicity, Brier/log properness)
+- Stone 16 ✅ — adversarial agents (ConfidentAgent, UniformAgent, BayesianAgent) implementing the typed `Agent` Protocol in `src/fingym/toys/adversarial_agents.py`. Three concrete failure modes (overconfident-wrong / no-discrimination / well-calibrated) prove the evaluator distinguishes belief quality, not just point-estimates.
+- Stone 17 ✅ — validating the evaluator ranks the adversaries correctly on every scoreboard dimension. Five integration tests in `tests/integration/test_evaluator_ranks_adversaries.py` aggregate 100 episodes; mean Brier across agents satisfies BayesianAgent (0.073) << UniformAgent (0.667 exactly by symmetry) << ConfidentAgent (1.225).
+- Stone 18 ✅ — reliability diagrams as visual artifacts; the Phase 0 visual exit criterion. `src/fingym/toys/reliability_diagrams.py` renders self-contained plotly HTML at `notebooks/reliability_diagrams.html`. ConfidentAgent shows overconfidence; UniformAgent shows zero discrimination; BayesianAgent tracks the diagonal. Structural-shape tests in `tests/integration/test_reliability_diagrams.py`.
+- Stone 19 ✅ — the model interface contract. Pydantic `Contract` with 11 nested types in `src/fingym/agents/contract.py`; PEP 695 generic `Agent[Evidence]` Protocol in `src/fingym/agents/interface.py`; six Phase 0 validation checks in `src/fingym/agents/contract_validator.py`; `BayesianContractEmitter` stub in `src/fingym/toys/contract_emitter.py` proves the Protocol compiles.
+- Stone 20 ✅ — the memory artifact schema. Pydantic `MemoryArtifact` for L2/L3 per memory-design.md in `src/fingym/memory/schema.py` (7 nested types; L3 invariant enforced via `model_validator`); illustrative L3 sample in `memory_registry/promoted/`. Scaffolding for Layer 7.
+- Stone 21 ✅ — property tests for math invariants. 8 hypothesis-based tests in `tests/property/test_math_invariants.py`: Bayesian update commutativity (coin + 3-state), Brier and log_score properness in expectation, belief_delta signed-inverse + cross-state sum-to-zero, reliability_buckets count invariant, Brier-zero-on-degenerate-correct.
 
-> *Phase 0 exit. Phase 0 is "done" when the evaluator correctly orders the three adversarial agents on every scoreboard dimension, the model interface is documented with a stub that compiles, and the memory schema validates a sample artifact.*
+> *Phase 0 exit ✅ — closed 2026-05-16. Final-state metrics: 92 unit + 10 integration + 8 property + 22 lint = 132 tests green; mypy strict clean across 31 source files. See [PROGRESS.md "Completed Phases"](PROGRESS.md#completed-phases) for the full close-out summary.*
 
-### Layer 4 — Point-in-time data spine + raw-evidence channel ⬜ (Phase 1)
-- Stone 22 ⬜ — corpus QA (validate the existing 10-year / 1700-name transcript corpus before any data flows)
+### Layer 4 — Point-in-time data spine + raw-evidence channel ⬜ (Phase 2 NEW)
+> Reordered 2026-05-16. Was Phase 1; now Phase 2 NEW after Phase 1 reorder. Some elements (PIT discipline, restatement events, delisted analogs) are first exercised in toy mode in Phase 1 NEW Cluster E, then on real data here.
+
+- Stone 22 ⬜ — corpus QA (validate the existing 10-year / 1700-name transcript corpus before any data flows). **First real-data step in Phase 2 NEW.**
 - Stone 23 ⬜ — the six data types in the canonical schema (emissions, derived_evidence, beliefs, actions, labels, scores) — derived_evidence is mechanical transformation only, never alpha cognition
-- Stone 24 ⬜ — point-in-time discipline in depth (`as_of` vs `as_known`, restatements, look-ahead audits)
+- Stone 24 ⬜ — point-in-time discipline in depth (`as_of` vs `as_known`, restatements, look-ahead audits). **Mechanism first exercised in toy mode at Phase 1 NEW Cluster E; on real data here.**
 - Stone 25 ⬜ — replay vs live parity (the same pipeline must run both, byte-identical)
-- Stone 26 ⬜ — survivorship bias and the delisted shadow universe (Norgate fundamentals for all in-scope names)
-- Stone 27 ⬜ — the trajectory store as year-2 SFT fuel (every belief/action/outcome/score preserved in SFT-fit format)
+- Stone 26 ⬜ — survivorship bias and the delisted shadow universe. **Real vendor: SEC EDGAR cross-reference for delisted CIKs** (per FMP/Massive smoke-test findings — neither vendor covers pre-2024 delisted names). **Mechanism first exercised in toy mode at Phase 1 NEW Cluster E.**
+- Stone 27 ⬜ — the trajectory store as year-2 SFT fuel (every belief/action/outcome/score preserved in SFT-fit format). **Schema instantiated in toy mode at Phase 1 NEW; migrated to real Contracts here.**
 - Stone 28 ⬜ — the raw-evidence channel (typed pipe delivering full unprocessed evidence to a model on demand)
 
-### Layer 5 — Model-driven agent on raw evidence ⬜ (Phase 2)
-- Stone 29 ⬜ — the pure-code plumbing baseline (hand-coded Bayesian — validates the pipeline, never promoted)
-- Stone 30 ⬜ — the first model-driven agent (raw evidence in, structured terminal output out)
-- Stone 31 ⬜ — market-implied belief recovery (implied DCF, options-implied probabilities, implied volatility)
-- Stone 32 ⬜ — the edge calculator (your belief − market-implied belief, net of costs)
-- Stone 33 ⬜ — fractional Kelly sizing (0.25× to 0.5× Kelly for miscalibration absorption)
+### Layer 5 — Model-driven agent on raw evidence ⬜ (Phase 1 NEW + Phase 2 NEW)
+> Reordered 2026-05-16. Stones 30, 31, 32 are first instantiated in toy mode in Phase 1 NEW (Clusters F, A, B respectively). Stone 29 (pure-code plumbing baseline) is largely absorbed by Phase 1 NEW Cluster F — kept here in case real-data substitution exposes plumbing-only validation needs.
+
+- Stone 29 ⬜ — the pure-code plumbing baseline (hand-coded Bayesian — validates the pipeline, never promoted). Likely absorbed by Phase 1 NEW; revisit at Phase 2 NEW if needed.
+- Stone 30 ⬜ — the first model-driven agent (raw evidence in, structured terminal output out). **First instantiation in toy mode at Phase 1 NEW Cluster F (LLM reads toy emissions); on real data in Phase 2 NEW.**
+- Stone 31 ⬜ — market-implied belief recovery (implied DCF, options-implied probabilities, implied volatility). **First instantiation in toy mode at Phase 1 NEW Cluster A** (price-from-belief and belief-from-price in the toy).
+- Stone 32 ⬜ — the edge calculator (your belief − market-implied belief, net of costs). **First instantiation in toy mode at Phase 1 NEW Cluster B.**
+- Stone 33 ⬜ — fractional Kelly sizing (0.25× to 0.5× Kelly for miscalibration absorption). Touched in Phase 1 NEW Cluster B/C.
 
 ### Layer 6 — Live operation + memory ⬜ (Phase 3)
 - Stone 34 ⬜ — live-feed engineering (market hours, halts, outage handling without info leak)
@@ -106,10 +112,12 @@ The complete plan, by layer. Stones taught and committed are marked **✅**; sto
 - Stone 36 ⬜ — calibration diagnostics dashboard (live reliability diagram, Brier rolling average)
 - Stone 37 ⬜ — no-Michael-comparison enforcement at the live layer (DESIGN.md #10 made structural)
 
-### Layer 7 — Population + promotion gate ⬜ (Phase 4)
-- Stone 38 ⬜ — population variants (≥3 agents varying in model × memory × prompt × reasoning)
-- Stone 39 ⬜ — LLM as proposer of candidate memory items
-- Stone 40 ⬜ — the promotion gate (held-out replay + cross-model regression + survivorship check + domain-of-validity tagging)
+### Layer 7 — Population + promotion gate ⬜ (Phase 1 NEW + Phase 4)
+> Reordered 2026-05-16. The MECHANISMS of population (Stone 38), proposal (Stone 39), and the promotion gate (Stone 40) are first exercised in toy mode in Phase 1 NEW Clusters G and H. Real-evidence promotion is Phase 4.
+
+- Stone 38 ⬜ — population variants (≥3 agents varying in model × memory × prompt × reasoning). **First instantiation in toy mode at Phase 1 NEW Cluster H.**
+- Stone 39 ⬜ — LLM as proposer of candidate memory items. **Mechanism first exercised in toy mode at Phase 1 NEW Cluster G.**
+- Stone 40 ⬜ — the promotion gate (held-out replay + cross-model regression + survivorship check + domain-of-validity tagging). **Four-check mechanism first exercised in toy mode at Phase 1 NEW Cluster G; real-evidence promotion at Phase 4.**
 - Stone 41 ⬜ — Goodhart resistance via scoreboard composition (a memory item that improves only one metric is suspect)
 
 ### Apex — Year-2 own-model fine-tune ⬜ (Phase 5)
@@ -313,7 +321,7 @@ In Layer 1 the game had two players: agent vs reality. **Layer 2 adds a third: t
 
 - **`S_true`** — what's actually true. One value from a fixed set of hypotheses (e.g., `{strengthening, stable, decaying}`). Revealed at the horizon; not known at decision time.
 - **`P_AI(S)`** — the agent's belief. Distribution over the same set, sums to `1`. The thing Layer 1 scored.
-- **`P_market(S)`** — the market's belief. Distribution of identical shape. Not announced directly; recoverable from observable prices (Phase 2 mechanism, Stone 31). Toy worlds construct it directly.
+- **`P_market(S)`** — the market's belief. Distribution of identical shape. Not announced directly; recoverable from observable prices (Stone 31 — first instantiated in toy mode at Phase 1 NEW Cluster A; on real data at Phase 2 NEW). Toy worlds construct it directly.
 - **`Action(A)`** — the action. Typed sum: `TradeAction(...) | NoAction`. `NoAction` is a peer of `TradeAction`, not a sized-down version.
 
 **Derived symbol.** `belief_delta(S) = P_AI(S) − P_market(S)`. The gap, per state. Signed real per state; sums to zero across states. The evaluator focuses on `belief_delta(S_true)` — the gap on the realized truth.
@@ -339,7 +347,7 @@ Four conditions, all required: disagreement (gap ≠ 0), agent correct (gap posi
 
 **Why "no edge" is a typed first-class output.** Most of the time, `belief_delta ≈ 0` (agreement) or `|belief_delta| < costs`. The correct `Action(A)` is `NoAction`. The system rewards saying "no edge" accurately. BIAS_PATTERNS #12 (trade-for-trade's-sake) names the failure of an agent that always finds trades.
 
-**What's deliberately unanswered.** Stone 7a is vocabulary. Stones 8–14 measure with it. Stone 31 (Phase 2) implements `P_market(S)` recovery from real markets. Formal symbol definitions, ranges, and properties live in [FORMULAS.md](FORMULAS.md).
+**What's deliberately unanswered.** Stone 7a is vocabulary. Stones 8–14 measure with it. Stone 31 implements `P_market(S)` recovery — first in toy mode at Phase 1 NEW Cluster A, then from real markets at Phase 2 NEW. Formal symbol definitions, ranges, and properties live in [FORMULAS.md](FORMULAS.md).
 
 ---
 
@@ -636,7 +644,7 @@ D has three corroborating red flags (Brier max, log near-Cromwell, anti-edge gap
 
 Three orthogonal signals. No single column suffices. Each lights up red for a different failure mode.
 
-**`P_market` source — toy vs production.** At Phase 0 (toys), `P_market` is constructed directly by the test scaffold. At Phase 2 (real markets), `P_market` is recovered from observable prices/options/spreads via the inversion mechanism (Stone 31). The recovery is approximate, but even approximate `P_market` is enough to surface the structural gap.
+**`P_market` source — toy vs production.** At Phase 0 (toys), `P_market` is constructed directly by the test scaffold. At Phase 1 NEW Cluster A, the toy market emits a price derived from its belief × payoff scaling and the agent recovers `P_market` by inverting the price (Stone 31, toy mode). At Phase 2 NEW (real markets), the same inversion mechanism is applied to observable prices/options/spreads. The recovery is approximate, but even approximate `P_market` is enough to surface the structural gap.
 
 **What Stone 11a does NOT do.** It measures the *potential* edge — the gap between agent and market beliefs. It does not yet account for:
 - Whether the agent chose an action that monetizes the gap (Stone 13).
@@ -884,7 +892,7 @@ The ratio is the headline diagnostic. Near 1.0 = the agent's edge survives at th
 
 The promotion gate sees `realized_edge × expression_type × size_bucket` as a multi-dimensional slice. Skill is tagged per slice — same `domain_of_validity` logic as Stones 10 and 11.
 
-**The cost-model dependency.** Stone 14 needs realistic models for spread, impact, and execution drag. Phase 0 toys use simple constructed models (fixed spread, square-root impact with calibrated constant). Phase 2+ refines from observed execution data. The deferred-fields list in [CONTRACT.md](CONTRACT.md) (cost_model, slippage_model, capacity_estimate, payoff_distribution) maps to Stone 14's inputs.
+**The cost-model dependency.** Stone 14 needs realistic models for spread, impact, and execution drag. Phase 0 toys use simple constructed models (fixed spread, square-root impact with calibrated constant). Phase 1 NEW Cluster C extends the toy with per-name liquidity + spread + impact + alpha decay. Phase 2 NEW onward refines from observed execution data. The deferred-fields list in [CONTRACT.md](CONTRACT.md) (cost_model, slippage_model, capacity_estimate, payoff_distribution) maps to Stone 14's inputs.
 
 **What Stone 14 does NOT measure.**
 

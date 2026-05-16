@@ -64,19 +64,19 @@ Where each DESIGN.md commitment is operationalized in the build. A commitment th
 
 | DESIGN.md Commitment | Phase(s) | What gets built |
 |---|---|---|
-| #1 Evaluator load-bearing | 0 | Scoreboard, proper scoring rules, process metrics, multi-horizon scoring |
-| #2 Belief over hidden state | 0, 2 | State-belief scoring; agent outputs are beliefs over state |
-| #3 Time one-way valve | 1 | PIT discipline, live-feed parity, look-ahead audits |
-| #4 Verified updates only | 4 | Promotion gate (held-out + live + cross-model + survivorship + domain-of-validity) |
-| #5 Cognition/verification boundary | 0, 2 | Typed model interface; cognition stays in model side |
-| #6 Raw-evidence native reasoning | 1, 2 | Raw-evidence channel; model-driven agent on raw evidence |
-| #7 Intelligence in architecture | 0, 1 | Model-agnostic memory format; swappable model interface |
-| #8 Two-axis improvement | 1, 5 | Trajectory store in SFT-fit format; year-2 fine-tune plan |
-| #9 Population, not single agent | 4 | ≥3 agent variants spawned; population mechanics |
+| #1 Evaluator load-bearing | 0, 1 | Scoreboard, proper scoring rules, process metrics; all columns populated and adversarially tested in Phase 1 NEW toy extension |
+| #2 Belief over hidden state | 0, 1 | State-belief scoring; market-implied belief recovery (Cluster A); gap-scoring |
+| #3 Time one-way valve | 1, 2 | Toy restatement events + delisted-mid-trajectory (Phase 1 NEW Cluster E); PIT discipline + `time_leak_guard` on real data (Phase 2 NEW Stone 24) |
+| #4 Verified updates only | 1, 4 | Toy promotion gate exercises the four-check mechanism (Phase 1 NEW Cluster G); production promotion gate operates on real evidence (Phase 4) |
+| #5 Cognition/verification boundary | 0, 1 | Typed model interface; first LLM cognition with structured Contract output (Phase 1 NEW Cluster F) |
+| #6 Raw-evidence native reasoning | 1, 2 | LLM reads toy emissions as raw text (Phase 1 NEW Cluster F); raw-evidence channel on real data (Phase 2 NEW Stone 28) |
+| #7 Intelligence in architecture | 0, 1 | Model-agnostic memory format (Phase 0); memory + promotion gate exercised end-to-end in toy (Phase 1 NEW Cluster G) |
+| #8 Two-axis improvement | 1, 2, 5 | Trajectory store with toy Contracts (Phase 1 NEW); real Contracts (Phase 2 NEW Stone 27); year-2 fine-tune plan (Phase 5) |
+| #9 Population, not single agent | 1, 4 | ≥3 LLM agent variants in toy with documented diversity (Phase 1 NEW Cluster H); population on real data (Phase 4) |
 | #10 Michael as auditor only | every | Phase-gate audit by Michael; no Michael-comparison signal |
-| **Broad production universe** | 1, 2 | ~1700+ names in analytical universe; deployment is emergent subset |
-| **Multi-horizon scoring** | 0, 2, 4 | 1m / 3m / 6m / 1y scored in parallel; horizon-tagged skills |
-| **Full equity-complex action space** | 0, 2 | Equity / options / vol / pairs / no-edge; expression-tagged skills |
+| **Broad production universe** | 2 | ~1700+ names in analytical universe; deployment is emergent subset |
+| **Multi-horizon scoring** | 0, 1, 4 | belief_delta + reliability_buckets (Phase 0); multi-horizon labels in toy (Phase 1 NEW Cluster D); horizon-tagged skills (Phase 4) |
+| **Full equity-complex action space** | 1, 2 | Action layer first instantiated in toy (Phase 1 NEW Cluster B); full equity complex on real data (Phase 2 NEW onward) |
 
 If you finish a phase and any commitment cell looks empty, something has slipped.
 
@@ -138,108 +138,143 @@ If you finish a phase and any commitment cell looks empty, something has slipped
 
 ---
 
-## Phase 1 — Data Spine + Raw-Evidence Channel (Weeks 3–4)
+## Phase 1 — Toy Architecture Extension (Weeks 3–6)
+
+> Reordered 2026-05-16. Prior Phase 1 ("Data Spine + Raw-Evidence Channel") became Phase 2 NEW. See [DECISIONS.md "Constitution tightening v4: Phase 1 reorder"](DECISIONS.md#constitution-tightening-v4-2026-05-phase-1-reorder).
+
+Phase 1 NEW extends the existing 3-state synthetic-market toy ([src/fingym/toys/synthetic_market.py](src/fingym/toys/synthetic_market.py)) *upward through the full architecture* before any real data is ingested. Each architectural piece — market-implied belief recovery, action layer, cost models, multi-horizon scoring, PIT discipline + restatements + delisted analogs, LLM-driven agent, memory + promotion gate, population mechanic — gets built and validated against the toy world FIRST. Real data substitutes into the toy-trained architecture in Phase 2 NEW, one data type at a time.
+
+The synthetic still CANNOT validate alpha (per DESIGN.md "Three Arenas" — only real-data labels score). Phase 1 NEW validates every architectural property EXCEPT alpha. Alpha validation begins in Phase 2 NEW.
 
 ### Teaching
 
 **Intuitions reinforced**:
-- [Intuition 4: Time Grades the Agent](intuitions.md#4-time-grades-the-agent)
+- [Intuition 3: The Hidden State Is the Real Object](intuitions.md#3-the-hidden-state-is-the-real-object) — extended to multi-horizon labels
+- [Intuition 5: Inference, Not Pattern Matching](intuitions.md#5-inference-not-pattern-matching) — first applied to a real LLM (Cluster F)
+- [Intuition 11: The Market Is a Second Believer](intuitions.md#11-the-market-is-a-second-believer) — operationalized in Cluster A
+- [Intuition 13: Time and the Two Ways to Be Wrong](intuitions.md#13-time-and-the-two-ways-to-be-wrong) — toy emits restatements (Cluster E)
 
 **Domain expertise**:
-- **Point-in-time data.** Restatements, revisions, as-of vs as-known dates.
-- **Look-ahead bias.** Specific failure modes (restated financials, current S&P membership for past dates, post-close prices).
-- **Corporate actions.** Splits, dividends, spinoffs. Total-return vs price-return.
-- **Survivorship bias.** Universes built from "still trading today."
-- **Vendor evaluation.** What to ask. Norgate, FactSet PIT, IBKR.
-- **Live-feed parity.** Replay and live must produce byte-identical outputs for same as-of date.
-- **The raw-evidence channel.** What the model sees: full transcripts, full options chains, multi-quarter histories, peer data, macro context. **Not pre-digested.**
+- **Price as a compression of belief.** A market's price reflects an implied probability distribution over outcomes. Inverting price recovers `P_market`.
+- **Implied DCF + options-implied probabilities (taught at toy scale).** The toy market emits a price derived from its current belief × payoff scaling. The agent's job is to recover the belief from the price.
+- **Cost economics in trade-sizing.** Spread, impact, alpha decay; the difference between nominal edge and realized edge.
+- **Multi-horizon scoring.** Same belief, different label horizons; per-horizon calibration tracked separately.
+- **Restatements + delisting.** What changes when `as_known(t) ≠ as_known(t+k)`; what happens when a name disappears mid-trajectory.
+- **LLM-as-agent.** Reading raw evidence as text; emitting a Contract that the validator accepts.
+- **Memory promotion mechanism (not yet memory content).** The four-check gate as plumbing, exercised against toy-generated memory proposals.
+- **Population mechanics.** Multiple LLM variants, scored in parallel, with documented diversity.
 
 ### Build
 
-**Week 1 — Corpus QA before anything else.**
-- **Stratified sample of ~30 transcripts** across companies / years / quarters. Manual read: speaker-tagging accuracy, Q&A delineation, timestamp correctness, missing sections, hallucinated content from speech-to-text errors.
-- **Statistical scan of all ~40K transcripts**: length distribution, missing fields, duplicate detection, company-name to CUSIP/ticker normalization.
-- **Spot-check against IR-website transcripts** for 5 names across the time window to verify accuracy.
-- **Outcome**: corpus passes QA / corpus has fixable issues / corpus must be scoped to clean subsets. We do not build on dirty data. If the pipeline has systematic issues, fix or scope before proceeding.
+Eight clusters, each ~3-4 tight sub-stones (concept-in-chat → code → verify, same texture as Phase 0). ~24-27 sub-stones total.
 
-**Week 1–4 — Data spine and channels.**
-- **Stratified universe selection** by operational + structural criteria across all tiers (learning ~30, production analytical ~1700+, delisted shadow ~all available). Sector-balanced within constraints. Documented selection criteria.
-- **Vendor selection + ingest** — Norgate Premium (PIT fundamentals + prices for **all in-scope names including delisted** — non-negotiable) + IBKR (live + options) + transcript corpus from existing dataset.
-- **Delisted shadow universe** — Norgate's delisted-name fundamentals + prices ingested as a first-class data set. Used by the promotion gate (Phase 4) to test for survivorship-bias in transcript-derived skills.
-- **Options data coverage.** Options chain history for the subset of names with meaningful options markets (typically ~500 of the ~1700). CBOE DataShop subset or OptionMetrics via WRDS. Live options via IBKR.
-- **Six-data-type schema** — canonical formats with `as_of`, `as_known`, `source`, `version`, `corpus_bias` flag where applicable.
-- **Replay pipeline** — given an as-of date, returns exactly what was knowable then. Includes delisted-name data for as-of dates when those companies were still trading.
-- **Live pipeline** — structurally identical to replay.
-- **Raw-evidence channel** — typed pipe that delivers full unprocessed evidence (transcripts, options chains, histories, filings) to a model on demand for any in-scope name. **No feature extraction at this layer.**
-- **Trajectory store** — every belief, action, outcome, score is written to disk in SFT-fit format from day 1 (DESIGN.md #8 — year-2 own-model path). Each record tagged with horizon and expression-type. The transcript corpus is preserved with full speaker-turn structure and timestamps so it's available for year-2 fine-tuning.
-- **Parity tests** — sample as-of dates verified byte-for-byte between replay and live across multiple names spanning the analytical universe.
+**Cluster A — Market-implied belief recovery (Stone 31)**. Toy market emits a price each tick, derived from its current belief × payoff scaling. Agent reads the price stream and inverts to recover `P_market`. Wires `market_implied_belief` + `belief_delta` into Contracts emitted by this richer toy. Validator accepts.
+
+**Cluster B — Action layer + decision quality (Stones 13, 32)**. Agent picks long / short / NoAction from belief + gap. Stone 13 coherence checks fire (belief monotone with evidence; sizing monotone with gap). Decision-quality column populated on the scoreboard.
+
+**Cluster C — Cost models + capacity (Stone 14)**. Per-name toy liquidity + spread + impact + alpha decay. `realized_edge` column on the scoreboard distinguishes nominal-edge agents from realized-edge agents.
+
+**Cluster D — Multi-horizon scoring (Stone 10 code)**. Toy emits labels at multiple tick horizons (e.g., 1-tick / 5-tick / 20-tick). One Contract scored at all horizons in parallel. Per-horizon calibration tracked separately. Reliability diagrams support horizon filtering.
+
+**Cluster E — PIT discipline + restatements + delisted analogs (Stones 24, 26 in toy)**. Toy emits restatement events: an emission can be issued at `as_of=t` with subsequent restated emission at `as_known=t+k` carrying a different value. Toy companies "delist" mid-trajectory (the emission stream terminates; subsequent labels still arrive at known horizons for evaluation). `time_leak_guard` fires structurally on the toy emission stream.
+
+**Cluster F — LLM-driven agent (Stone 30, first instantiation)**. First real LLM (Anthropic SDK; `claude-opus-4-7` or comparable). The LLM reads toy emissions as text and emits Contracts. `contract_validator` accepts the LLM's output. Single agent only; population comes in Cluster H.
+
+**Cluster G — Memory + promotion gate (Stones 39, 40 in toy)**. The LLM agent emits `memory_update_proposal` fields. The toy promotion gate runs the four checks (held-out replay calibration improvement; live calibration probationary; process discipline; cross-model regression). Proposed → L2 → L3 transitions exercised on the toy `memory_registry/`. Promoted L3 skills read at session start by LLM agents.
+
+**Cluster H — Population mechanic (Stone 38 in toy)**. ≥3 LLM-agent variants varying in (prior × prompt × memory subset). Scored in parallel. Documented diversity in beliefs and actions.
 
 ### DESIGN.md commitments addressed
 
-- #3 (time one-way valve), #6 (raw-evidence native reasoning — the channel that makes it possible), #7 (model-agnostic data format), #8 (trajectory store in SFT-fit format from day 1).
+- #1 (evaluator load-bearing — all scoreboard columns populated and tested against adversarial agents in the extended toy)
+- #2 (belief over hidden state — extended with market-implied belief; gap is the load-bearing scoring direction)
+- #5 (cognition / verification boundary — LLM cognition for the first time; structured Contract output is the only thing scored)
+- #6 (raw-evidence native reasoning — LLM reads toy emissions as text, no pre-engineered features)
+- #7 (intelligence in architecture — memory + promotion gate exercised at the mechanism level)
+- #9 (population — ≥3 LLM agents in parallel with documented diversity)
 
 ### Exit criterion
 
+- All scoreboard columns populated (Brier, log_score, belief_delta_on_truth, decision_quality, realized_edge, reliability_buckets, mean_gap_on_truth); each tested against adversarial agents in the extended toy.
+- LLM-driven agent produces valid Contracts (`contract_validator` accepts).
+- Toy promotion gate produces L2 → L3 promotions on the toy `memory_registry/`; LLM agents read promoted skills at session start.
+- Population of ≥3 LLM agents runs in parallel with documented diversity in beliefs and actions.
+- Trajectory store schema instantiated with toy Contracts; ready for the year-2 SFT format.
+- All Phase 0 tests still green; mypy strict clean across all source files.
+
+### Slippage watch
+
+- **Synthetic-scores-promote-skills.** Are toy promotion-gate outputs being treated as evidence that a skill generalizes? **NO.** The toy gate validates the MECHANISM. No toy-promoted skill enters production L3 memory. (DESIGN.md "Three Arenas," DECISIONS.md "Worldlets — FUTURE RESEARCH NOT COMMITTED.")
+- **Pre-engineered features creeping into the LLM agent (Cluster F).** Is the LLM receiving anything pre-digested instead of raw toy emissions as text? No. Raw emissions only. (DESIGN.md #6.)
+- **Templating the LLM's reasoning.** Is the prompt forcing an 11-step reasoning skeleton? No — the Contract IS the constraint; cognition is free. (DECISIONS.md "Constitution tightening v2," rejected synthesis-style 11-step prompt skeleton.)
+- **Single-model lock-in (Cluster F).** Does the LLM-driven agent code path embed model-specific quirks? No. Cluster F uses Anthropic for first instantiation, but Cluster H must spawn variants under at least one alternative model (or, at minimum, vary prompt/memory subset over the same model to prove the architecture admits diversity).
+- **Skipping cluster discipline.** Each cluster is 3-4 tight sub-stones with concept-in-chat → code → verify. Are we tempted to fuse clusters into one big jump? No — that's how Phase 1 originally drifted into 1700-transcript ingest. Tight stones only.
+- **Vendor decisions sneaking in.** Are vendor (SEC EDGAR, FMP, Massive, Norgate) decisions creeping into Phase 1 NEW? No — defer to Phase 2 NEW. The Anthropic API key (Cluster F) is the only external integration.
+
+---
+
+## Phase 2 — Real-Data Transition (Weeks 7–10)
+
+> Reordered 2026-05-16. This was the original Phase 1. See [DECISIONS.md "Constitution tightening v4"](DECISIONS.md#constitution-tightening-v4-2026-05-phase-1-reorder).
+
+Phase 2 NEW substitutes real data into the toy-trained architecture, **one data type at a time**. The architecture from Phase 1 NEW remains the load-bearing structure; real data fills slots that the toy proved out. Vendor decisions are now informed by the FMP/Massive smoke-test findings ([scripts/fmp_smoke_test.py](scripts/fmp_smoke_test.py), [scripts/fmp_comprehensive_test.py](scripts/fmp_comprehensive_test.py), [scripts/massive_smoke_test.py](scripts/massive_smoke_test.py)) — both vendors have the same delisted-coverage gap; FMP additionally has restated-vs-original-as-known issues; SEC EDGAR is the authoritative PIT-fundamentals source.
+
+### Teaching
+
+**Intuitions reinforced**:
+- [Intuition 4: Time Grades the Agent](intuitions.md#4-time-grades-the-agent) — at production scale on real timestamps
+- [Intuition 9: Costly Observation](intuitions.md#9-costly-observation) — applied to API rate limits and corpus QA scope
+- [Intuition 10: Which Information to Buy](intuitions.md#10-which-information-to-buy) — vendor-mix selection
+
+**Domain expertise**:
+- **Point-in-time data at production scale.** Real `as_of` / `as_known` mismatches; SEC EDGAR XBRL filings; restatement-event handling on real GE-style events.
+- **Vendor evaluation — refined post-smoke-test.** Why no single vendor solves all three (prices + fundamentals + transcripts + delisted). SEC EDGAR for PIT fundamentals; Massive for prices (with delisted-coverage caveat); existing FMP-derived transcript corpus.
+- **Live-feed parity.** Replay and live must produce byte-identical outputs for the same as-of date.
+- **Survivorship bias at scale.** Why the transcript corpus is survivorship-biased; how to cross-reference SEC EDGAR for delisted CIKs.
+- **The raw-evidence channel.** What the model sees in production: full transcripts, full filings, peer data, macro — never pre-digested.
+
+### Build
+
+Real-data substitution proceeds stone-by-stone. The previously-Phase-1 deliverables (Stones 22-28) are sequenced as discrete substitution steps:
+
+**Stone 22 — Corpus QA on the existing 10-year / 1700-name transcript corpus**. Stratified sample of ~30 transcripts (manual read: speaker-tagging accuracy, Q&A delineation, timestamp correctness, missing sections, speech-to-text artifacts). Statistical scan of all transcripts (length distribution, missing fields, duplicate detection, company-name to CUSIP/ticker normalization). Spot-check against IR-website transcripts for 5 names. Outcome: passes / has fixable issues / must be scoped to clean subsets. **First real-data step; this is also where the two parked architectural questions (emission-triggered vs agent-driven; emissions taxonomy) reopen** (see DECISIONS.md "Open architectural questions").
+
+**Stone 23 — Six-data-type schema instantiated with real data**. Canonical formats with `as_of`, `as_known`, `source`, `version`, `corpus_bias` flag where applicable. Schema validates against the Phase-1-NEW-trained architecture without architecture changes.
+
+**Stone 24 — PIT discipline at production scale**. `time_leak_guard` fires on real timestamps. Adversarial test: as-of 2020-Q3 cannot reveal anything published in 2020-Q4 or later. Restatement events from SEC EDGAR (the toy Cluster E mechanism, now on real data).
+
+**Stone 25 — Replay vs live parity**. Same code path, real data. Sample as-of dates verified byte-for-byte between replay and live across multiple names.
+
+**Stone 26 — Delisted shadow universe (real vendor)**. SEC EDGAR cross-reference for delisted CIKs (per the FMP/Massive smoke-test findings — neither vendor returns coverage for pre-2024 delisted names; EDGAR is the authoritative source). Ingested as a first-class dataset. Used by the promotion gate (Phase 4) for the survivorship check.
+
+**Stone 27 — Trajectory store with real Contracts**. Schema migrated from toy; sample reads/writes cleanly. Each record tagged with horizon and expression-type. The transcript corpus is preserved with full speaker-turn structure so it's available for year-2 fine-tuning.
+
+**Stone 28 — Raw-evidence channel operational**. Typed pipe delivers full unprocessed evidence (transcripts, filings, prices, fundamentals) to a model on demand for any in-scope name. No feature extraction at this layer.
+
+### DESIGN.md commitments addressed
+
+- #3 (time one-way valve — at production scale)
+- #6 (raw-evidence native reasoning — the channel that makes it possible, now on real data)
+- #7 (model-agnostic data format)
+- #8 (trajectory store in SFT-fit format with real Contracts)
+
+### Exit criterion
+
+- The toy-trained architecture works on real data end-to-end for **at least one historical episode of one company** (canary check before broader rollout).
 - Transcript corpus QA complete; either passed clean or scoped to a clean subset with documentation.
 - Replay matches live byte-for-byte across multiple sample dates.
-- No look-ahead leak passes adversarial test (as-of 2020-Q3 cannot reveal anything published in 2020-Q4 or later).
-- Raw-evidence channel delivers full unprocessed evidence for any (company, as_of_date).
-- Delisted shadow universe is ingested and queryable; sample delisted-name retrieval works.
-- Trajectory store schema is documented; a sample trajectory writes and reads cleanly.
+- Delisted shadow universe (SEC EDGAR-sourced for pre-2024) is ingested and queryable.
+- Trajectory store contains real Contracts and reads cleanly.
+- All Phase 1 NEW tests still green; mypy strict clean.
 
 ### Slippage watch
 
 - **Feature engineering creeping into the spine.** Are we tempted to compute "sales_cycle_elongation_delta" or similar in the spine? No. That's a search-time choice the model makes. The spine delivers raw.
 - **Transcript summarization.** Are we tempted to summarize transcripts rather than deliver full speaker-tagged text? No. Full text only.
 - **Survivorship bias smuggling.** Are we using the transcript corpus alone for any calibration or training task that should include delisted outcomes? No. Delisted shadow universe is part of every relevant validation step.
-- **Skipping QA.** Are we tempted to skip corpus QA and start ingesting? No. Dirty data poisons everything downstream.
-- **Trajectory format compromise.** Is the trajectory store missing something needed for year-2 SFT (e.g., reasoning traces, intermediate beliefs)? Fix in Phase 1, not later.
-
----
-
-## Phase 2 — Model-Driven Agent on Raw Evidence (Weeks 5–6)
-
-### Teaching
-
-**Intuitions reinforced**:
-- [Intuition 3: The Hidden State Is the Real Object](intuitions.md#3-the-hidden-state-is-the-real-object)
-- [Intuition 5: Inference, Not Pattern Matching](intuitions.md#5-inference-not-pattern-matching)
-- [Intuition 11: The Market Is a Second Believer](intuitions.md#11-the-market-is-a-second-believer)
-
-**Domain expertise**:
-- **Hidden state modeling.** Coarse vs fine state spaces. Why coarse is virtuous initially.
-- **Implied DCF math.** Solving in reverse.
-- **Options-implied probabilities.** Risk-neutral vs real-world.
-- **Market-implied belief recovery.** Inverting price to recover the market's implied state belief.
-- **Edge calculation.** `your belief − market-implied belief`, net of costs.
-- **Fractional Kelly sizing.** 0.25× to 0.5× Kelly to absorb miscalibration.
-- **The cognition/verification boundary in practice.** Model reasons freely; structured output is the only thing scored.
-
-### Build
-
-- **Pure-code plumbing baseline** — hand-coded Bayesian with hardcoded likelihoods on the ~30-name learning universe. **Used ONLY to verify the data spine + evaluator + market-implied belief pipeline are correctly wired.** This is *not* the production agent. Its outputs are discarded after plumbing validation; its hand-coded heuristics are never promoted into the model agent.
-- **First model-driven agent** — receives raw evidence from the channel built in Phase 1, reasons natively, produces structured terminal output (belief over state + recommended expression from the full equity complex + sizing + horizon-of-edge + uncertainty + memory updates). Operates on the **production analytical universe** (~1700 names). This *is* the production agent shape. (DESIGN.md #5, #6.)
-- **Market-implied belief recovery module** — implied DCF + options-implied probabilities. Used by both agents.
-- **Edge calculator** — computes edge per (name × horizon × expression) cell. Each agent decides which cells have edge worth acting on.
-- **Fractional-Kelly sizer** — applied per expression at the chosen horizon.
-- Both agents run on the same evaluator. Both scored at all horizons. The pure-code baseline only operates on the learning universe; the model-driven agent operates on the production analytical universe.
-
-### DESIGN.md commitments addressed
-
-- #2 (belief over hidden state), #5 (cognition/verification boundary — model reasons freely; structured output only), #6 (raw-evidence native reasoning).
-
-### Exit criterion
-
-- Pure-code baseline runs correctly, validating the data + evaluator + market-implied belief pipeline. (Plumbing OK.)
-- Model-driven agent runs on historical replay, produces sensible structured terminal output, scored by evaluator.
-- Both beat the null-agent baseline on calibration. (If they don't, something is broken — fix before proceeding.)
-
-### Slippage watch
-
-- **Promoting pure-code heuristics into the model agent.** No. Pure-code is plumbing only. Its likelihood hand-codings are not memory items for the model agent.
-- **Pre-extracting features for the model agent.** No. The model agent sees raw evidence and chooses what to attend to.
-- **Templating the model agent's reasoning.** No. The prompt enables the model to reason however it reasons; only the terminal output schema is enforced.
-- **Single-model lock-in.** This phase uses one model for simplicity, but the contract is provider-agnostic. The first model used must be swappable in Phase 5 with no code changes.
+- **Skipping QA.** Are we tempted to skip Stone 22 corpus QA and start ingesting? No. Dirty data poisons everything downstream.
+- **Trajectory format compromise.** Is the trajectory store missing something needed for year-2 SFT? Fix in Phase 2, not later.
+- **Architecture drift.** Is real data forcing changes to the Phase-1-NEW-trained architecture? If yes, pause and investigate — the toy was supposed to exercise this. Architecture changes here mean the toy missed something; document the gap in DECISIONS.md before changing the architecture.
 
 ---
 

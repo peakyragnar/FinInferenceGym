@@ -244,6 +244,70 @@ Every entry: **what was proposed → why rejected → principle / commitment inv
 
 ---
 
+## Constitution tightening v4 (2026-05): Phase 1 reorder
+
+- **Context**: After Phase 0 closed (Stones 15-21 green, all 4 exit criteria met), Michael ran a phase-gate audit pass on BUILD.md's Phase 1. The audit surfaced two observations:
+  - Phase 1 stones as written in BUILD.md (corpus QA on 1700 transcripts, six-data-type schema, PIT discipline at production scale, replay-vs-live parity, delisted shadow universe, trajectory store with real Contracts, raw-evidence channel) are **sprint-sized, not stone-sized**. Each was a several-week deliverable, not the tight ~50-200-line cadence Phase 0 had established. Ingesting 1700 transcripts as the first move after the 3-state toy felt like a sudden scale jump.
+  - Two FMP+Massive vendor smoke tests (see [scripts/fmp_smoke_test.py](scripts/fmp_smoke_test.py), [scripts/fmp_comprehensive_test.py](scripts/fmp_comprehensive_test.py), [scripts/massive_smoke_test.py](scripts/massive_smoke_test.py)) revealed that both vendors have the SAME delisted-coverage gap (delisted-companies registry only goes back to 2024-01-05; pre-2008 delisted names like LEH/ENE/BSC don't return profile or historical price data on either API). FMP additionally has a restatement-handling issue (GE 2017 normalized revenue $99.3B vs actual 10-K ~$122B — restated values shown with original filingDate). The smoke tests forced a recognition that vendor decisions need SEC EDGAR cross-reference and aren't a clean "pick one" — they're a step-by-step substitution problem.
+  - Michael's intuition: many architectural pieces (market-implied belief, action layer, cost models, multi-horizon scoring, PIT discipline, restatements, delisted analogs, LLM-driven agent, memory + promotion gate, population mechanic) can be exercised in the existing toy FIRST, where S_true is known and the labelling function is ours. Real data then substitutes one type at a time into the toy-trained architecture.
+
+- **Decision (single coordinated change)**: Reorder Phase 1. The original BUILD.md Phase 1 = "data spine + real-data ingest" becomes **Phase 1 NEW = Toy Architecture Extension (Weeks 3-6)**. The previously-Phase-1 deliverables (Stones 22-28) move to **Phase 2 NEW = Real-Data Transition**. The architectural pieces are validated against the toy first, vendor commitment defers to Phase 2.
+
+- **Phase 1 NEW — 8 clusters** (~24-27 sub-stones total, same tight texture as Phase 0):
+
+  | Cluster | Architecture piece (in toy mode) | PYRAMID stones touched |
+  |---|---|---|
+  | A | Market-implied belief recovery — toy "market" emits prices derived from belief; agent inverts price → recovers `P_market` | Stone 31 |
+  | B | Action layer + decision quality — agent picks long/short/NoAction from belief + gap; Stone 13 coherence checks fire | Stones 13, 32 |
+  | C | Cost models + capacity — per-name liquidity + spread + impact + alpha decay; Stone 14 realized-edge column | Stone 14 |
+  | D | Multi-horizon scoring — toy emits labels at multiple tick horizons; one Contract scored at all | Stone 10 |
+  | E | PIT discipline + restatements + delisted analogs — toy emits restatement events; toy companies "delist" mid-trajectory | Stones 24, 26 |
+  | F | LLM-driven agent — first real LLM (Anthropic SDK) reads toy emissions as text, emits Contracts | Stone 30 |
+  | G | Memory + promotion gate — LLM agent emits `memory_update_proposal`; toy promotion gate runs four checks | Stones 39, 40 |
+  | H | Population mechanic — 3 LLM-agent variants (different priors × prompts × memory subsets); scored in parallel | Stone 38 |
+
+- **Phase 2 NEW — Real-data transition (substitution one data type at a time)**:
+
+  | Stone | Phase 2 NEW work |
+  |---|---|
+  | Stone 22 | Corpus QA on existing 10-year / 1700-name transcript corpus (first real-data step) |
+  | Stone 23 | Six-data-type schema instantiated with real data |
+  | Stone 24 | PIT discipline at production scale; `time_leak_guard` fires on real timestamps |
+  | Stone 25 | Replay vs live parity — same code path, real data |
+  | Stone 26 | Delisted shadow universe (real vendor) — SEC EDGAR cross-reference for delisted CIKs |
+  | Stone 27 | Trajectory store with real Contracts |
+  | Stone 28 | Raw-evidence channel operational |
+
+  Phase 2 NEW exit criterion: the toy-trained architecture works on real data end-to-end for at least one historical episode of one company.
+
+- **What this preserves**:
+  - The tight-stones cadence from Phase 0 (one concept, ~50-200 lines code, verifiable output per stone) extends through Phase 1 NEW.
+  - Every load-bearing architectural piece (belief recovery, action layer, costs, multi-horizon, PIT, restatements, delistings, LLM cognition, memory, promotion, population) gets validated under controlled inputs BEFORE vendor commitment.
+  - DESIGN.md "Three Arenas" commitment intact — synthetic still cannot validate alpha. The synthetic extension validates **every architectural property except alpha**. Alpha validation requires real-data labels (Phase 2 NEW onward).
+  - All Phase 0 tests stay green; mypy strict clean.
+
+- **What this changes**:
+  - [BUILD.md](BUILD.md) — Phase 1 section rewritten as "Toy Architecture Extension"; Phase 2 section rewritten as "Real-Data Transition." Previously-Phase-1 stones (22-28) reassigned to Phase 2.
+  - [PROGRESS.md](PROGRESS.md) — Current Phase = "Phase 1 NEW — Toy Architecture Extension", 8-cluster checklist (A-H), Next Action = Cluster A (Stone 31a-d, market-implied belief recovery sub-stones).
+  - [PYRAMID.md](PYRAMID.md) — Current Position paragraph reflects Phase 1 NEW (toy-extension-first) reorder.
+  - No DESIGN.md changes. No CONTRACT.md changes. No memory-design.md changes. No new mechanisms.
+
+- **Pushbacks recorded** (claims Claude argued against and Michael accepted, or vice versa):
+  - **"Build the data spine first because architecture decisions depend on real-data shape"** was rejected. The toy is rich enough to exercise belief-recovery, action selection, cost modeling, multi-horizon scoring, restatement events, and delisting analogs without prejudging the data schema. Real-data shape (FMP normalized vs raw, EDGAR XBRL, vendor cross-reference) is genuinely Phase 2 work — discovered during substitution, not designed up front.
+  - **"Synthetic worlds still cannot validate alpha"** is preserved verbatim (the Three Arenas commitment, DESIGN.md). Phase 1 NEW does not generate promotable skills. The toy promotion gate (Cluster G) exercises the MECHANISM (four checks fire, gate accepts/rejects) without ever entering L3 memory as a production skill. Promotion-with-real-evidence is Phase 2 NEW onward.
+  - **"Ingesting 1700 transcripts now is premature"** was Michael's audit, accepted by Claude. The audit's exact phrasing: "the remaining scope — step by step as we build is the right approach, but it doesn't seem like we have sharp detailed remaining steps. ingesting 1700 transcripts now seems way off."
+  - **"Vendor decision should defer until SEC EDGAR is tested as the PIT-fundamentals authority"** emerged from the FMP/Massive smoke-test findings. Both vendors have the same delisted-coverage gap; FMP additionally fails the restated-vs-original-as-known check on GE 2017. SEC EDGAR (free, authoritative) is the right PIT-fundamentals source. This question reopens during Phase 2 NEW Stone 23-24 work.
+
+- **What does NOT change**: The 10 commitments. The six layers. The promotion gate spec. The CONTRACT.md spec. Phase 0 substep ordering, exit criteria, and history. Memory-design.md architecture. The teaching cadence (concept-in-PYRAMID-then-code). The mechanism layer. The two open architectural questions below (emission-triggered vs agent-driven; emissions taxonomy) — both still reopen at Phase 2 NEW Stone 22-23 territory.
+
+- **Files touched**: BUILD.md (Phase 1 + Phase 2 rewrite), PROGRESS.md (new checklist), PYRAMID.md (Current Position paragraph), DECISIONS.md (this entry).
+
+- **Mechanism additions**: None. The reorder is sequencing, not principle change.
+
+- **Principle**: DESIGN.md #1 (evaluator load-bearing — proving the full evaluator under controlled inputs first is exactly the load-bearing-evaluator commitment), #4 (verified updates only — synthetic still doesn't promote; the toy promotion gate validates mechanism, not skills), #5 (cognition/verification boundary — exercising every architectural piece in toy mode tightens the boundary before real data adds noise), Three Arenas (synthetic ≠ alpha validation; preserved). Plus the project's tight-stones cadence and BIAS_PATTERNS #10 (scope expansion without reason) — Phase 1 NEW is smaller stones, not bigger ones.
+
+---
+
 ## Open architectural questions (parked, not yet decided)
 
 ### Belief-update trigger architecture: emission-triggered vs agent-driven (2026-05)
