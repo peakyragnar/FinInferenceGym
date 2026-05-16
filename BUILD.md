@@ -217,7 +217,7 @@ Eight clusters, each ~3-4 tight sub-stones (concept-in-chat → code → verify,
 
 > Reordered 2026-05-16. This was the original Phase 1. See [DECISIONS.md "Constitution tightening v4"](DECISIONS.md#constitution-tightening-v4-2026-05-phase-1-reorder).
 
-Phase 2 NEW substitutes real data into the toy-trained architecture, **one data type at a time**. The architecture from Phase 1 NEW remains the load-bearing structure; real data fills slots that the toy proved out. Vendor decisions are now informed by the FMP/Massive smoke-test findings ([scripts/fmp_smoke_test.py](scripts/fmp_smoke_test.py), [scripts/fmp_comprehensive_test.py](scripts/fmp_comprehensive_test.py), [scripts/massive_smoke_test.py](scripts/massive_smoke_test.py)) — both vendors have the same delisted-coverage gap; FMP additionally has restated-vs-original-as-known issues; SEC EDGAR is the authoritative PIT-fundamentals source.
+Phase 2 NEW substitutes real data into the toy-trained architecture, **one data type at a time**. The architecture from Phase 1 NEW remains the load-bearing structure; real data fills slots that the toy proved out. Vendor decisions are now informed by the FMP/Massive smoke-test findings ([vendor_evaluations/fmp_smoke_test.py](vendor_evaluations/fmp_smoke_test.py), [vendor_evaluations/fmp_comprehensive_test.py](vendor_evaluations/fmp_comprehensive_test.py), [vendor_evaluations/massive_smoke_test.py](vendor_evaluations/massive_smoke_test.py)) — both vendors have the same delisted-coverage gap; FMP additionally has restated-vs-original-as-known issues; SEC EDGAR is the authoritative PIT-fundamentals source.
 
 ### Teaching
 
