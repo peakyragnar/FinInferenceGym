@@ -149,8 +149,11 @@ def test_trade_action_zero_notional_rejected_by_pydantic() -> None:
 def test_contract_is_frozen() -> None:
     """Contract is immutable; reassigning a field raises ValidationError."""
     contract = Contract(**_valid_kwargs())
+    # The pydantic mypy plugin correctly marks frozen-model fields as
+    # read-only Properties at the static level. The type-ignore opts out
+    # of that static check so we can verify the runtime raises.
     with pytest.raises(ValidationError):
-        contract.agent_id = "different"
+        contract.agent_id = "different"  # type: ignore[misc]
 
 
 def test_discriminated_union_serializes_round_trip() -> None:

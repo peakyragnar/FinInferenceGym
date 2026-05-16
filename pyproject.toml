@@ -27,6 +27,8 @@ dev = [
   "pre-commit",
   "openpyxl>=3.1.5",
   "plotly>=6.7.0",
+  "pyyaml>=6.0.3",
+  "types-pyyaml>=6.0.12.20260510",
 ]
 
 [build-system]
@@ -68,6 +70,9 @@ python_version = "3.12"
 strict = true
 warn_unreachable = true
 files = ["src", "tests"]
+# pydantic v2 ships its own mypy plugin; required so mypy understands
+# Field(alias=...) and populate_by_name=True on BaseModel subclasses.
+plugins = ["pydantic.mypy"]
 
 # plotly ships no py.typed marker. It is used only by viz code in
 # src/fingym/toys/reliability_diagrams.py — no type contract leaks into

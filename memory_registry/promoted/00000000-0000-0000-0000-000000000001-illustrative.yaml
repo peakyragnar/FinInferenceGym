@@ -1,0 +1,80 @@
+# ILLUSTRATIVE SAMPLE — NOT A REAL SKILL IN THE REGISTRY.
+#
+# Included to make the L3 memory artifact schema concrete for readers
+# (memory-design.md "YAML schema for L2 / L3 artifacts") and to give
+# the Stone 20 test suite a parsable on-disk YAML to validate. This
+# skill is fabricated — DO NOT treat its claim as validated alpha.
+# The fields are populated to demonstrate the schema's shape.
+#
+# Real skills will arrive via the Phase 4 promotion gate; their
+# claims, scopes, and audit trails will be substantive.
+
+id: 00000000-0000-0000-0000-000000000001
+tier: L3
+
+content: |
+  ILLUSTRATIVE: When a SaaS company's quarterly transcript discloses
+  customer concentration above 30% AND the largest customer is in a
+  cyclical industry, the company's hidden state has elevated
+  probability of decaying over the next 6-12 months (around 60%
+  conditional on this disclosure, vs around 30% base rate).
+
+  Mechanism: concentrated revenue means the customer's cyclical
+  exposure transfers to the SaaS company; downturns in the customer
+  industry force pricing concessions or contract cancellations.
+
+domain_of_validity:
+  horizons:
+    - 6m
+    - 1y
+  expression_types:
+    - equity_short
+    - option_put
+  sectors:
+    - software
+    - saas
+  time_range_start: 2015-01-01
+  time_range_end: null
+
+derived_from:
+  - trajectory_id: illustrative-trajectory-aaa
+  - trajectory_id: illustrative-trajectory-bbb
+  - observation_id: illustrative-observation-ccc
+
+supersedes: []
+
+audit_trail:
+  - timestamp: 2026-04-15T10:30:00+00:00
+    action: proposed
+    by: illustrative-agent-claude-v1
+    reason: Pattern observed across multiple held-out episodes in the validation cohort
+  - timestamp: 2026-04-22T09:00:00+00:00
+    action: promoted
+    by: system
+    reason: |
+      Passed all four promotion checks (held-out replay +
+      cross-model regression + survivorship check +
+      domain-of-validity declared).
+
+promotion_check_results:
+  held_out_replay:
+    pass: true
+    splits_passed: 3
+    calibration_delta: 0.04
+  cross_model_regression:
+    pass: true
+    models_validated:
+      - claude-opus-4-7
+      - gpt-5-turbo
+  survivorship_check:
+    pass: true
+    delisted_sample_size: 12
+  domain_of_validity_declared: true
+
+promoted_at: 2026-04-22T09:00:00+00:00
+
+# Deferred fields — typed from day 1 (memory-design.md "Deferrals"),
+# populated when corresponding features land.
+contradicts: []
+depends_on: []
+confidence: null
