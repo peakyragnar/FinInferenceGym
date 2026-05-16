@@ -25,6 +25,8 @@ dev = [
   "pytest",
   "hypothesis",
   "pre-commit",
+  "openpyxl>=3.1.5",
+  "plotly>=6.7.0",
 ]
 
 [build-system]
@@ -66,6 +68,13 @@ python_version = "3.12"
 strict = true
 warn_unreachable = true
 files = ["src", "tests"]
+
+# plotly ships no py.typed marker. It is used only by viz code in
+# src/fingym/toys/reliability_diagrams.py — no type contract leaks into
+# the verification layer or anywhere downstream.
+[[tool.mypy.overrides]]
+module = ["plotly", "plotly.*"]
+ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------
 # pytest — property tests via hypothesis (TECHNICAL.md).

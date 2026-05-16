@@ -42,3 +42,6 @@ htmlcov/
 
 # Detect-secrets baseline (kept separately if used)
 .secrets.baseline
+
+# Reliability diagrams and other generated plot output
+notebooks/*.html

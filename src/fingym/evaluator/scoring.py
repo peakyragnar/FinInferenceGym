@@ -32,6 +32,7 @@ silently kills the signal).
 """
 
 import math
+from dataclasses import dataclass
 
 
 def brier[H](belief: dict[H, float], outcome: H) -> float:
@@ -108,3 +109,75 @@ def belief_delta_on_truth[H](p_ai: dict[H, float], p_market: dict[H, float], out
     gap stays finite regardless; Cromwell loudness lives in log_score.
     """
     return p_ai.get(outcome, 0.0) - p_market.get(outcome, 0.0)
+
+
+@dataclass(frozen=True)
+class ReliabilityBucket:
+    """One row of a reliability diagram (PYRAMID.md Stone 8 / Stone 18).
+
+    Returned by `reliability_buckets`. A calibrated agent has
+    `mean_claim ≈ observed_rate` in every bucket (points on the 45° line).
+    """
+
+    bucket_idx: int
+    lo: float
+    hi: float
+    mean_claim: float
+    observed_rate: float
+    count: int
+
+
+def reliability_buckets(
+    claims: list[float], outcomes: list[int], n_buckets: int = 10
+) -> list[ReliabilityBucket]:
+    """Group claims into equal-width buckets; return per-bucket calibration.
+
+    Reliability calibration measurement (PYRAMID.md Stone 8, FORMULAS.md
+    "Calibration measurement"). Bucket `b` covers `[b/B, (b+1)/B)`; the
+    last bucket includes 1.0. Each returned `ReliabilityBucket` reports
+    `mean_claim` (average claim in the bucket), `observed_rate` (fraction
+    of predictions in the bucket whose outcome was 1), and `count`.
+
+    A calibrated agent has `mean_claim ≈ observed_rate` in every bucket.
+    Off-diagonal points are diagnostic — `mean_claim > observed_rate` is
+    overconfidence; `mean_claim < observed_rate` is underconfidence.
+
+    Empty buckets are omitted. Inputs:
+      - `claims`: probabilities in [0, 1]
+      - `outcomes`: 0/1, same length as `claims`
+      - `n_buckets`: number of equal-width buckets (default 10)
+    """
+    if len(claims) != len(outcomes):
+        raise ValueError(
+            f"claims and outcomes must have equal length; got {len(claims)} and {len(outcomes)}"
+        )
+    if n_buckets < 2:
+        raise ValueError(f"n_buckets must be >= 2; got {n_buckets}")
+
+    result: list[ReliabilityBucket] = []
+    for b in range(n_buckets):
+        lo = b / n_buckets
+        hi_open = (b + 1) / n_buckets
+        # Last bucket is closed on the right so claim==1.0 still lands.
+        is_last = b == n_buckets - 1
+        bucket_pairs = [
+            (c, o)
+            for c, o in zip(claims, outcomes, strict=True)
+            if lo <= c < hi_open or (is_last and c == 1.0)
+        ]
+        if not bucket_pairs:
+            continue
+        n = len(bucket_pairs)
+        mean_claim = sum(c for c, _ in bucket_pairs) / n
+        observed_rate = sum(o for _, o in bucket_pairs) / n
+        result.append(
+            ReliabilityBucket(
+                bucket_idx=b,
+                lo=lo,
+                hi=hi_open,
+                mean_claim=mean_claim,
+                observed_rate=observed_rate,
+                count=n,
+            )
+        )
+    return result
