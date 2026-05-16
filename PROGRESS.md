@@ -6,75 +6,93 @@ Current build status. Updated at the end of every working session.
 
 ## Current Phase
 
-**Phase 0 — Evaluator + Model Interface Contract + Toys (Weeks 1–2)**
+**Phase 1 — Data Spine + Raw-Evidence Channel (Weeks 3–4)**
 
-Status: **in progress** — substeps 1–3 complete (scaffolding, Neon database, coin toy migrated). Substep 4a partial (Brier + log score in `src/fingym/evaluator/scoring.py`). Constitution tightening v1 landed (see DECISIONS.md): `derived_features` → `derived_evidence` rename, physics-not-alpha sharpening, trajectory-as-audit-object clarification, BIAS_PATTERN #11, new `no_alpha_features.py` lint (15 pre-commit hooks total). Constitution tightening v2 landed (see DECISIONS.md): four-thing decomposition vocabulary, DESIGN.md #2 sharpened with price-as-adversarial-belief, NO-EDGE elevated to Operational Constraint, [CONTRACT.md](CONTRACT.md) created (MVP spec for structured terminal output), PYRAMID Stone 11a (market-delta scoring) + Stone 19 sharpened, BIAS_PATTERN #12 (trade-for-trade's-sake), Stone-numbering convention (letter suffixes for insertions, no renumbering). **Layer 2 teaching complete** — all stones (8–14) distilled in [PYRAMID.md](PYRAMID.md) and [FORMULAS.md](FORMULAS.md). Stone 14 (capacity-adjusted return — spread + commission + square-root impact + alpha decay; per-Contract realized edge; sliced primarily by size bucket; column-not-cap with one structural near-cap that realized edge at stated size must be positive) just landed. Two architectural questions parked in DECISIONS.md with revisit triggers at Stone 22–23: (1) emission-triggered vs agent-driven Contract emission (leaning A); (2) emissions taxonomy must include macro/sector/cross-asset, not just company filings. Stone 9 extended with column-on-scoreboard vs hard-cap meta-principle. **Stone 15 (synthetic-market toy) complete** — [src/fingym/toys/synthetic_market.py](src/fingym/toys/synthetic_market.py) implements all four steps: the 3-state world (likelihood table + emission sampler + verification), a single Bayesian believer (`run`), the two-believer scenario with `belief_delta` on truth tick-by-tick (`run_two_believers`), and a fixed-scenario scoreboard reproducing PYRAMID Stone 11a's worked example by code (`run_scoreboard_demo`). `belief_delta_on_truth` added to [src/fingym/evaluator/scoring.py](src/fingym/evaluator/scoring.py) alongside `brier` and `log_score`; both modules mypy strict clean. **Stones 16–18 complete** (substep 5 + Phase 0 visual exit criterion): adversarial agents (ConfidentAgent, UniformAgent, BayesianAgent) in [src/fingym/toys/adversarial_agents.py](src/fingym/toys/adversarial_agents.py) (Stone 16); pytest assertions locking the ranking property in [tests/integration/test_evaluator_ranks_adversaries.py](tests/integration/test_evaluator_ranks_adversaries.py) (Stone 17, 5 tests); reliability-diagram HTML renderer in [src/fingym/toys/reliability_diagrams.py](src/fingym/toys/reliability_diagrams.py) (Stone 18) with structural-shape assertions in [tests/integration/test_reliability_diagrams.py](tests/integration/test_reliability_diagrams.py) (5 tests). 10 integration tests green; mypy strict clean. `plotly` added as dev dep; HTML output gitignored under `notebooks/*.html`. **Constitution tightening v3** landed (see DECISIONS.md) — synthesis-review crystallizations: one-sentence definition added to CLAUDE.md preamble and DESIGN.md Purpose; new "Three Arenas" section in DESIGN.md (historical replay / synthetic worlds / live operation, each with explicit epistemic status); new "What this system is NOT (purpose-level positioning)" subsection in DESIGN.md Out of Scope; Worldlets concept (narrow synthetic financial failure-mode drills) parked in DECISIONS.md as **FUTURE RESEARCH, NOT COMMITTED**. **Stone 19 complete** (substep 6) — model interface contract: pydantic [Contract model](src/fingym/agents/contract.py) with 11 nested types (EvidenceRef, HiddenStateHypothesis, BeliefDistribution, MarketBeliefEstimate, BeliefDelta, TradeAction, NoAction, Falsifier, LabelPlan, CognitiveStep, MemoryUpdateProposal); `Agent[Evidence]` typed Protocol in [interface.py](src/fingym/agents/interface.py) (PEP 695 generic over evidence type); validator in [contract_validator.py](src/fingym/agents/contract_validator.py) enforcing the six Phase 0 checks from CONTRACT.md Validation; stub `BayesianContractEmitter` in [src/fingym/toys/contract_emitter.py](src/fingym/toys/contract_emitter.py) proves the Protocol compiles against a concrete implementation; 20 unit tests in `tests/unit/test_contract.py` + `tests/unit/test_contract_validator.py`. **Stone 20 complete** (substep 7) — memory artifact schema: pydantic [MemoryArtifact](src/fingym/memory/schema.py) for L2/L3 artifacts per memory-design.md; L3 invariant enforced (promotion_check_results + promoted_at required); DerivedFromEdge invariant (exactly one of trajectory/observation/artifact id); deferred-but-typed-from-day-1 fields (contradicts, depends_on, confidence) shipped as Optional. Illustrative sample L3 artifact in [memory_registry/promoted/](memory_registry/promoted/00000000-0000-0000-0000-000000000001-illustrative.yaml) validates; 12 unit tests in `tests/unit/test_memory_schema.py`. `pyyaml` + `types-pyyaml` added as dev deps; pydantic mypy plugin enabled. **ALL FOUR PHASE 0 EXIT CRITERIA NOW MET**: (1) evaluator ranks adversaries correctly; (2) reliability diagrams show expected shapes; (3) Contract documented + stub compiles; (4) memory schema validates a sample artifact. **Stone 21 complete** (substep 8) — 8 property tests in [tests/property/test_math_invariants.py](tests/property/test_math_invariants.py) covering: coin Bayesian commutativity, synthetic-market Bayesian commutativity, Brier properness in expectation, log_score properness in expectation, belief_delta signed-inverse, belief_delta cross-state sum-to-zero, reliability_buckets count invariant, Brier-zero-on-degenerate-correct-belief. All 8 pass in 0.45s. **PHASE 0 IS FULLY COMPLETE** — all four exit criteria met AND all eight substeps green. Next: BUILD.md "Phase-Gate Audit" (9 standing questions, with any failure of #1-#4 a stop-the-line), then Phase 1 (data spine + raw-evidence channel).
+Status: **opening** — Phase 0 closed 2026-05-16 with all 8 substeps green and all 4 exit criteria met. Phase-gate audit passed: stop-the-line conditions (#1–#4) all clear; #5 evaluator-honesty verified by Stones 17/18/21 (adversarial ranking + reliability diagrams + property tests); #6–#8 are N/A pre-Phase-1; #9 budget/schedule confirmed by operator. Phase 1 covers corpus QA on the existing 10-year / 1700-name transcript dataset (Stone 22), then the data spine + raw-evidence channel + delisted shadow universe + trajectory store schema (Stones 23–28).
 
-See [BUILD.md](BUILD.md#phase-0--evaluator--model-interface-contract--toys-weeks-12) for full phase definition (teaching, build, design cross-reference, exit criterion, slippage watch).
+See [BUILD.md Phase 1](BUILD.md#phase-1--data-spine--raw-evidence-channel-weeks-34) for the full phase definition (teaching, build, design cross-reference, exit criterion, slippage watch).
 
 ---
 
-## Phase 0 Checklist
+## Phase 1 Checklist
 
 | Deliverable | Status |
 |---|---|
-| Repo skeleton (`src/fingym/` packages, `tests/` tree, `config/`, `memory_registry/`) | ✅ Scaffolded |
-| Stub config files (`config/universe.yaml`, `config/vendors.yaml`, `config/agents/baseline.yaml`) | ✅ Scaffolded |
-| `README.md` at root | ✅ Present |
-| `src/fingym/toys/coin.py` — minimal Bayesian belief-revision toy | ✅ Migrated under mypy strict (substep 3) |
-| `pyproject.toml` via `uv init`, ruff + mypy strict + pytest configured | ✅ Complete (substep 1) |
-| Pre-commit installed and verified | ✅ Complete (substep 1) |
-| Neon database connected; `.env` populated; alembic initialized | ✅ Complete (substep 2) |
-| `toys/coin.py` migrated to `src/fingym/toys/coin.py` with full type hints | ✅ Complete (substep 3) |
-| Evaluator v0 (scoreboard library: Brier, log score, calibration curve, process-quality flag, decision-quality, capacity-adjusted return) | ⬜ Partial — `brier`, `log_score`, `belief_delta_on_truth` in `src/fingym/evaluator/scoring.py` (substep 4a + Stone 11a). Calibration curve / process-quality / decision-quality / capacity-adjusted not yet built as scoreboard columns. |
-| Multi-horizon scoring built into evaluator (1m / 3m / 6m / 1y, plus shorter for toys) | ⬜ Not started (substep 4) |
-| Action-space-aware scoring (expression_type tagging: equity-long / -short / option-* / vol-* / pair / no-edge) | ⬜ Not started (substep 4) |
-| 3-state synthetic company toy | ✅ Complete (substep 4, Stone 15) — `src/fingym/toys/synthetic_market.py`, four steps incl. Stone 11a scoreboard reproduction |
-| Adversarial test agents (confidently-wrong, always-50%, well-calibrated) | ✅ Complete (substep 5, Stones 16-17) — `src/fingym/toys/adversarial_agents.py` (3 agents satisfying typed Agent protocol) + `tests/integration/test_evaluator_ranks_adversaries.py` (5 pytest assertions locking Bayesian << Uniform << Confident on Brier and log_score) |
-| Reliability diagrams (Phase 0 visual exit criterion) | ✅ Complete (Stone 18) — `src/fingym/toys/reliability_diagrams.py` generates self-contained HTML at `notebooks/reliability_diagrams.html` (gitignored, regenerable); `tests/integration/test_reliability_diagrams.py` asserts 5 structural shapes (Confident overconfidence, Confident underconfidence on low-claim, Uniform zero discrimination, Bayesian + Market discrimination plus calibration). `plotly` added as dev dep |
-| Model interface contract (typed I/O — raw evidence in, structured terminal output) | ✅ Complete (substep 6, Stone 19) — `src/fingym/agents/contract.py` (pydantic Contract + 11 nested types), `src/fingym/agents/interface.py` (Agent Protocol, PEP 695 generic), `src/fingym/agents/contract_validator.py` (6 Phase 0 checks); `src/fingym/toys/contract_emitter.py` (BayesianContractEmitter stub proves Protocol compiles); 20 unit tests in `tests/unit/test_contract.py` + `tests/unit/test_contract_validator.py` |
-| Memory artifact schema (versioned, model-readable, horizon-tagged, expression-type-tagged) | ✅ Complete (substep 7, Stone 20) — `src/fingym/memory/schema.py` (pydantic MemoryArtifact + nested types: AuditEntry, DomainOfValidity, DerivedFromEdge, HeldOutReplayResult, CrossModelRegressionResult, SurvivorshipCheckResult, PromotionCheckResults); illustrative L3 sample in `memory_registry/promoted/`; 12 unit tests in `tests/unit/test_memory_schema.py` |
-| Property tests smoke subset green | ✅ Complete (substep 8, Stone 21) — `tests/property/test_math_invariants.py` with 8 hypothesis-based tests: Bayesian update commutativity (coin + 3-state), Brier and log_score properness in expectation, belief_delta signed-inverse + cross-state sum, reliability_buckets count invariant, Brier-zero-on-degenerate-correct. All 8 pass in 0.45s |
+| Corpus QA on the existing 10-year / 1700-name transcript dataset (Stone 22) — stratified sample, statistical scan, spot-check | ⬜ Not started |
+| Vendor selection + ingest pipelines: Norgate Premium (PIT fundamentals + prices, including delisted), IBKR (live + options), FRED (macro), existing transcript corpus | ⬜ Not started |
+| Six-data-type schema (emissions / derived_evidence / beliefs / actions / labels / scores) with `as_of`, `as_known`, `source`, `version`, `corpus_bias` flag (Stone 23) | ⬜ Not started |
+| Point-in-time discipline depth: `time_leak_guard`, look-ahead audits, restated-fact handling (Stone 24) | ⬜ Not started |
+| Replay vs live pipeline parity (Stone 25) — same code path, byte-identical output | ⬜ Not started |
+| Delisted shadow universe (Stone 26) — Norgate fundamentals + prices for delisted / bankrupt / acquired names | ⬜ Not started |
+| Trajectory store in SFT-fit format (Stone 27) — per the Stone 19 Contract; ready for year-2 own-model fine-tune | ⬜ Not started |
+| Raw-evidence channel (Stone 28) — typed pipe delivering full unprocessed evidence on demand | ⬜ Not started |
 
-## Phase 0 Exit Criteria (from BUILD.md)
+## Phase 1 Exit Criteria (from BUILD.md)
 
-- Evaluator correctly orders adversarial agents on every scoreboard dimension.
-- Reliability diagrams show overconfidence in confidently-wrong agent and zero discrimination in always-50% agent.
-- Model interface contract is documented; a stub agent compiles against it.
-- Memory schema is documented and validates a sample skill artifact.
+- Transcript corpus QA complete; either passed clean or scoped to a clean subset with documentation.
+- Replay matches live byte-for-byte across multiple sample dates.
+- No look-ahead leak passes adversarial test (as-of 2020-Q3 cannot reveal anything published in 2020-Q4 or later).
+- Raw-evidence channel delivers full unprocessed evidence for any `(company, as_of_date)`.
+- Delisted shadow universe is ingested and queryable; sample delisted-name retrieval works.
+- Trajectory store schema is documented; a sample trajectory writes and reads cleanly.
 
 ---
 
 ## Next Action
 
-Next: **Phase-Gate Audit** (BUILD.md "Phase-Gate Audit"). All Phase 0 substeps are now ✅ and all four exit criteria are met. The nine standing audit questions (asked of the build, not of Michael) are the gate between Phase 0 and Phase 1:
+Next: **Stone 22 — Corpus QA** on the existing 10-year / 1700-name transcript corpus. Phase 1's first substantive step. Per BUILD.md slippage watch: *"Are we tempted to skip corpus QA and start ingesting? No. Dirty data poisons everything downstream."*
 
-  1. Did we add any constraint not explicitly justified by DESIGN.md?
-  2. Did we smuggle a thematic prior, narrative anchor, or "obviously X"?
-  3. Did anything migrate *out of* verification and *into* cognition?
-  4. Is the model interface still open?
-  5. Is the evaluator still honest? (Adversarial toy re-test.)
-  6. Is data discipline holding? (Parity test re-run.)
-  7. Is the trajectory store still SFT-fit?
-  8. Is the delisted shadow universe being applied consistently?
-  9. Are we on budget? Are we on schedule?
+Stone 22 deliverables:
 
-Any failure of #1, #2, #3, or #4 is a stop-the-line. After audit passes, Phase 1 begins (data spine + raw-evidence channel + corpus QA on the 10-year / 1700-name transcript dataset; Stones 22–28 per PYRAMID.md).
+1. **Stratified sample of ~30 transcripts** across companies / years / quarters. Manual read: speaker-tagging accuracy, Q&A delineation, timestamp correctness, missing sections, hallucinated content from speech-to-text errors.
+2. **Statistical scan of all ~40K transcripts**: length distribution, missing fields, duplicate detection, company-name to CUSIP/ticker normalization.
+3. **Spot-check against IR-website transcripts** for 5 names across the time window to verify accuracy.
 
-The remaining substep-4 scoreboard columns (calibration curve / ECE for Stone 8; process-quality flag for Stone 12; decision-quality coherence checks for Stone 13; capacity-adjusted return for Stone 14; multi-horizon scoring infrastructure for Stone 10; action-space-aware expression_type tagging for Stone 11) land as their input machinery ships during Phases 1–2 — columns that need actions wait for Phase 2's model-driven agent (now that Stone 19's Contract Protocol exists, those columns can be built atop it); columns that need emissions tables wait for Phase 1.
+Outcome possibilities (BUILD.md): corpus passes QA / corpus has fixable issues / corpus must be scoped to clean subsets. **We do not build on dirty data.**
 
-Phase 0 Week 1 substeps, in order:
+**Operator-level prep before Stone 22 can run:**
 
-1. **Bootstrap engineering scaffolding.** ✅ `uv init` (Python 3.12 pinned via `.python-version`); `pyproject.toml` configured with all runtime + dev deps and `[tool.ruff]`/`[tool.mypy]`/`[tool.pytest.ini_options]` sections; `uv.lock` committed; `pre-commit install` run via `uv run`; full hook suite green (14 hooks). Claude PostToolUse `ruff format` hook verified to fire on `.py` edits (single-quoted docstring auto-normalized to double). Pre-commit-config bumps: ruff rev v0.6.0 → v0.15.12 (matches venv); mypy hook switched from mirrors-mypy (commented placeholder) to local `uv run mypy` so the type-checker reads the locked dep graph instead of a parallel additional_dependencies list. Scaffolding fixes to make hooks pass: `detect-secrets` pragmas on three template/env-name false positives; RUF002 `×`/`−` → ASCII in two docstrings; `no-discretionary-references` lint caught its own scaffolding's "Michael's transcript corpus" attribution in `src/fingym/data/ingest/__init__.py` — rewritten to "an existing 10-year / 1700-name speaker-tagged corpus" per DESIGN.md #10.
-2. **Set up Neon database.** ✅ Neon project "FinInferenceLab" created in `aws-eu-west-2` running Postgres 17.8; pooled connection string stored in local `.env` (gitignored). Psycopg smoke test (`SELECT 1`, `version()`, `current_database()`) returns clean. `uv run alembic init migrations` initialised the migrations tree; `alembic.ini` placeholder `sqlalchemy.url` commented out and the URL injected programmatically from `DATABASE_URL` inside `migrations/env.py` (with `postgresql://` → `postgresql+psycopg://` rewrite so SQLAlchemy dispatches over psycopg3). Empty baseline revision `34760aee56bf_initial.py` generated and applied; `public.alembic_version` row reads `34760aee56bf`. TECHNICAL.md bumped from Postgres 16 to 17 to match what Neon actually provisioned.
-3. **Migrate `toys/coin.py`** into `src/fingym/toys/coin.py` with full type hints under mypy strict. ✅ Migrated under mypy strict. State alphabet (Coin) and emission alphabet (Flip) encoded as PEP 695 `type` aliases over `Literal`, so the closed hypothesis space is enforced at the type level. `Belief` aliased to `dict[Coin, float]`. Behavior identical; runs cleanly as `uv run python -m fingym.toys.coin`. Old `toys/coin.py` deleted; empty `toys/` directory removed; both `intuitions.md` links updated to the new path.
-4. **Build the evaluator v0.** Partial. `brier`, `log_score`, `belief_delta_on_truth` (Stone 11a) live in `src/fingym/evaluator/scoring.py`. Stone 15 (synthetic-market toy) complete: `src/fingym/toys/synthetic_market.py` implements world + Bayesian believer + two-believer scenario + Stone 11a scoreboard reproduction. Remaining scoreboard columns (calibration curve, process-quality, decision-quality, capacity-adjusted) and multi-horizon / expression-type tagging infrastructure land alongside the input machinery they require.
-5. **Build three adversarial test agents** (confidently-wrong, always-50%, well-calibrated) and verify the evaluator distinguishes them on every scoreboard dimension. ✅ Complete (Stones 16-17). Three agents in `src/fingym/toys/adversarial_agents.py` satisfying typed `Agent` protocol. Ranking property locked by `tests/integration/test_evaluator_ranks_adversaries.py` — 5 pytest assertions confirm Bayesian (mean Brier 0.073) << Uniform (0.667 exactly by symmetry) << Confident (1.225) on Brier and log_score across 100 episodes with randomized truth. Reliability diagrams (Stone 18, visual exit criterion) added in `src/fingym/toys/reliability_diagrams.py` with 5 structural-shape tests in `tests/integration/test_reliability_diagrams.py`. HTML output at `notebooks/reliability_diagrams.html` (regenerable, gitignored under `notebooks/*.html`).
-6. **Define the model-interface contract** (`src/fingym/agents/interface.py`) as a typed Protocol — raw evidence in, structured terminal output out. ✅ Complete (Stone 19). `src/fingym/agents/contract.py` (pydantic Contract + 11 nested types per CONTRACT.md), `src/fingym/agents/interface.py` (Agent[Evidence] Protocol, PEP 695 generic), `src/fingym/agents/contract_validator.py` (six Phase 0 validation checks collecting all failures rather than short-circuiting), `src/fingym/toys/contract_emitter.py` (BayesianContractEmitter wraps the existing BayesianAgent to emit valid Contracts; runnable demo). 20 unit tests pass. End-to-end demo: BayesianContractEmitter emits a Contract from a 12-emission stream; validator ACCEPTS it; numbers match Stone 15 Run 1.
-7. **Define the memory artifact schema** (`src/fingym/memory/schema.py`) as a pydantic model; validate a sample artifact in `memory_registry/`. ✅ Complete (Stone 20). `src/fingym/memory/schema.py` (MemoryArtifact for L2/L3 per memory-design.md, with 7 nested types and the L3 invariant enforced via model_validator). Illustrative sample L3 artifact at `memory_registry/promoted/00000000-0000-0000-0000-000000000001-illustrative.yaml` parses and validates. 12 unit tests pass. Added `pyyaml` + `types-pyyaml` as dev deps; enabled pydantic.mypy plugin under [tool.mypy] (catches Field aliases and frozen-model read-only properties).
-8. **Run property tests** (smoke subset) to confirm math invariants. ✅ Complete (Stone 21). `tests/property/test_math_invariants.py` with 8 hypothesis-based property tests. Properties: Bayesian update commutativity (`coin.update`, `synthetic_market.update`); Brier properness in expectation (`E_y~q[Brier(q, y)] <= E_y~q[Brier(r, y)]`); log_score properness in expectation (same shape); belief_delta_on_truth signed-inverse and cross-state sum-to-zero; reliability_buckets count invariant; Brier reaches zero on a degenerate correct belief. All 8 tests pass in 0.45s.
+- **Corpus access** — the 10-year / 1700-name transcript corpus needs to be wired into the build environment (local disk, cloud bucket, or other surface the repo can read).
+- **Vendor decisions** (Phase 1 will land subsequent stones, but decide early): Norgate Premium subscription confirmed (~$200–500/month estimated; the largest line item in the $11–17K total budget). CBOE DataShop or OptionMetrics via WRDS for historical options. FRED API key for macro (free).
+- **IBKR account** active (for the live feed later in Phase 1; can be deferred to Phase 3 if doing historical replay first).
 
-Exit Phase 0 only when all checklist items above are ✅ and adversarial agents are correctly ordered on the scoreboard.
+After Stone 22 lands, Stones 23–28 build the data spine atop validated data. BUILD.md slippage watches for Phase 1 are explicit: no feature engineering creeping into the spine; no transcript summarization; no survivorship-bias smuggling (delisted shadow universe is part of every relevant validation); no trajectory format compromise; no corpus-QA skipping.
+
+---
+
+## Completed Phases
+
+### Phase 0 — Evaluator + Model Interface Contract + Toys (Weeks 1–2) ✅ Closed 2026-05-16
+
+**Substeps 1–8, all green:**
+
+1. **Bootstrap engineering scaffolding** — `uv init`, `pyproject.toml`, ruff + mypy strict + pytest, pre-commit installed; 15 hooks green.
+2. **Neon database** — Postgres 17.8 in `aws-eu-west-2`, alembic baseline `34760aee56bf` applied; `.env` populated.
+3. **Migrate `toys/coin.py`** under mypy strict; PEP 695 type aliases over `Literal` for the closed alphabet.
+4. **Build evaluator v0** — `brier`, `log_score`, `belief_delta_on_truth` (Stone 11a) in `src/fingym/evaluator/scoring.py`; `reliability_buckets` + `ReliabilityBucket` (Stone 18). Stone 15 synthetic-market toy (`src/fingym/toys/synthetic_market.py`) — world + believer + two-believer + scoreboard reproduction of PYRAMID Stone 11a's worked example. **Remaining scoreboard columns** (calibration curve, process-quality, decision-quality, capacity-adjusted; multi-horizon + expression_type tagging infrastructure) wait for their input machinery — Phase 1's emissions table, Phase 2's action layer.
+5. **Adversarial test agents + ranking lock + reliability diagrams** — Stones 16-18. `src/fingym/toys/adversarial_agents.py` (ConfidentAgent, UniformAgent, BayesianAgent satisfying typed `Agent` Protocol); `tests/integration/test_evaluator_ranks_adversaries.py` (5 ranking tests); `src/fingym/toys/reliability_diagrams.py` (plotly HTML at `notebooks/reliability_diagrams.html`); `tests/integration/test_reliability_diagrams.py` (5 structural-shape tests).
+6. **Model interface contract** — Stone 19. `src/fingym/agents/contract.py` (pydantic Contract + 11 nested types per CONTRACT.md), `src/fingym/agents/interface.py` (`Agent[Evidence]` Protocol, PEP 695 generic), `src/fingym/agents/contract_validator.py` (six Phase 0 validation checks), `src/fingym/toys/contract_emitter.py` (BayesianContractEmitter stub proves Protocol compiles). 20 unit tests.
+7. **Memory artifact schema** — Stone 20. `src/fingym/memory/schema.py` (pydantic MemoryArtifact for L2/L3 per memory-design.md; 7 nested types; L3 invariant enforced); illustrative L3 sample in `memory_registry/promoted/`. 12 unit tests. `pyyaml` + `types-pyyaml` added as dev deps; pydantic mypy plugin enabled under `[tool.mypy]`.
+8. **Property tests for math invariants** — Stone 21. `tests/property/test_math_invariants.py` with 8 hypothesis-based tests: Bayesian update commutativity (coin + 3-state), Brier and log_score properness in expectation, belief_delta signed-inverse + cross-state sum-to-zero, reliability_buckets count invariant, Brier-zero-on-degenerate-correct.
+
+**All four Phase 0 exit criteria met:**
+
+- ✅ Evaluator correctly orders adversarial agents on every scoreboard dimension.
+- ✅ Reliability diagrams show overconfidence in confidently-wrong agent and zero discrimination in always-50% agent.
+- ✅ Model interface contract documented; stub agent compiles against it.
+- ✅ Memory schema documented and validates a sample skill artifact.
+
+**Constitution tightening events during Phase 0** (see [DECISIONS.md](DECISIONS.md)):
+
+- **v1**: `derived_features` → `derived_evidence` rename; physics-not-alpha sharpening of #5; trajectory-as-audit-object clarification + BIAS_PATTERN #11 (narrative as evidence); `no_alpha_features.py` lint added.
+- **v2**: four-thing decomposition vocabulary (`S_true`, `P_AI(S)`, `P_market(S)`, `Action(A)`); DESIGN.md #2 sharpened with price-as-adversarial-belief; NO-EDGE elevated to Operational Constraint; CONTRACT.md created; PYRAMID Stone 11a + Stone 19 sharpened; BIAS_PATTERN #12 (trade-for-trade's-sake); stone-numbering convention.
+- **v3**: one-sentence definition (CLAUDE.md + DESIGN.md); "Three Arenas" section in DESIGN.md; "What this system is NOT" anti-list in DESIGN.md Out of Scope; Worldlets concept parked in DECISIONS.md as **FUTURE RESEARCH, NOT COMMITTED**.
+
+**Final-state metrics:**
+
+- **Tests**: 92 unit + 10 integration + 8 property + 22 lint = **132 green**; mypy strict clean across 31 source files.
+- **Commits this phase**: Phase 0 spans the build history from initial scaffolding through `8a3205e` (Stone 21).
+- **Two architectural questions parked** in DECISIONS.md (emission-triggered vs agent-driven Contract emission, leaning A; emissions taxonomy must include macro/sector/cross-asset). Revisit trigger: Stone 22–23 (Phase 1).
 
 ---
 
@@ -85,5 +103,7 @@ This file is updated at the **end of every working session**. The update protoco
 1. Mark deliverables ✅ as they complete.
 2. Move "Current Phase" forward only when all that phase's exit criteria are met *and* Michael's phase-gate audit has passed (BUILD.md "Phase-Gate Audit").
 3. Add a one-line note under "Next Action" so the next session knows where to start.
+
+When a phase closes, move its details into "Completed Phases" as a condensed summary; details remain recoverable from git history and DECISIONS.md.
 
 If a session ends mid-task, "Next Action" should be specific enough that the next session can resume without ambiguity.
