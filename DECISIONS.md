@@ -219,6 +219,31 @@ Every entry: **what was proposed → why rejected → principle / commitment inv
 
 ---
 
+## Constitution tightening v3 (2026-05)
+
+- **Context**: External-perspective synthesis review (2026-05-16, ChatGPT-generated synthesis of the gym/harness conceptual model) crystallized three framings that existed implicitly across DESIGN.md / BUILD.md / memory-design.md but were never made explicit in one place. The synthesis also surfaced one new uncommitted concept (worldlets — narrow synthetic financial failure-mode drills) which is parked as future research below.
+
+- **Decision** (four coordinated additions):
+  1. **One-sentence definition** added to CLAUDE.md preamble and DESIGN.md Purpose: "FinInferenceGym is a contract-scored, point-in-time replay engine for evolving financial belief systems." Captures contract-scored outputs, time discipline, replay (historical + live), and the evolutionary loop. Sharper than the existing prose; complements rather than replaces.
+  2. **The Three Arenas section** added to DESIGN.md after Ride-the-Exponent Principle, before Operational Constraints. Tabulates the three arenas (historical replay, synthetic worlds, live operation) with explicit epistemic status for each. Reinforces that synthetic-world artifacts CANNOT validate alpha — only time-revealed labels from real data score. This was implicit in DESIGN.md #4 + Operational Constraints; now stated structurally.
+  3. **System-purpose anti-list** added to DESIGN.md "Out of Scope" as a new subsection ("What this system is NOT (purpose-level positioning)"). Names three system-level mischaracterizations the architecture is not: "LLM reads all data and synthesizes better than Wall Street" (too weak); "invent fake economy and trade real stocks" (fantasy); "search over historical data until something works" (data mining). Existing architecture-level rejections preserved as a separate subsection below.
+  4. **Worldlets concept parked as future research** in DECISIONS.md "Open architectural questions." Explicitly NOT COMMITTED; revisit trigger = Phase 2+ if historical replay alone is insufficient for agent cognition curriculum. Working assumption: synthetic environments stay generic; default learning path is historical replay over raw real-market evidence.
+
+- **What does NOT change**: The 10 commitments. The six layers. The promotion gate spec. The CONTRACT.md spec. Phase 0 substep ordering and exit criteria. Memory-design.md architecture. The teaching cadence.
+
+- **Files touched**: CLAUDE.md, DESIGN.md (3 inserts), DECISIONS.md (this entry + Worldlets entry below).
+
+- **Mechanism additions**: None. These are clarifications and parking; the existing mechanism layer (`no_alpha_features.py` lint, `no_hardcoded_models.py` lint, `no_discretionary_references.py` lint, import-linter rules) already enforces what the new framings restate.
+
+- **Pushbacks recorded** (claims from the synthesis that Claude argued against and Michael accepted):
+  - **"AlphaEvolve lab" as an explicit BUILD.md step was rejected** — DECISIONS.md "AlphaEvolve as a separate framework to import" already addressed this. The population + promotion gate INSTANTIATES the AlphaEvolve-shape mutate-test-promote pattern without importing the framework. The strictness of our four-check gate is hand-coded to our exact commitments; importing AlphaEvolve as a framework would give us search machinery whose strictness we don't control.
+  - **"Hand-engineered numerical-weight artifact" as an example was rejected** — e.g., `silent_guide_down_score = 0.35*X + 0.25*Y + ...`. DESIGN.md #6 forbids pre-engineered features as primary input. The right shape for a skill of this kind is qualitative (the model integrates signals natively from raw evidence); the `no_alpha_features.py` lint catches the hand-engineered form. The system's skills are textual claims with declared domain-of-validity, not weighted scoring formulas.
+  - **A full meta-loop ASCII diagram in DESIGN.md was rejected** — the loop is implicit across the existing docs (the six layers + the trajectory flow in CONTRACT.md + the promotion gate in memory-design.md). Drawing it once in DESIGN.md risks drift as any layer evolves.
+
+- **Principle**: DESIGN.md #1 (evaluator load-bearing — Three Arenas makes the evaluator's epistemic boundaries explicit), #4 (verified updates only — anti-list and Three Arenas reinforce that synthetic worlds don't generate promotable evidence), #6 (no pre-engineered features as primary input — rejection of numerical-weight artifacts). Plus the project's "mechanisms over prompts" framing — the clarifications restate what existing mechanisms enforce; they don't add new rules.
+
+---
+
 ## Open architectural questions (parked, not yet decided)
 
 ### Belief-update trigger architecture: emission-triggered vs agent-driven (2026-05)
@@ -243,6 +268,15 @@ Every entry: **what was proposed → why rejected → principle / commitment inv
 - **Why deferred**: Same reason as Architecture A above — the emissions table is built in Layer 4. The taxonomy is committed to as an architectural target; the schema lands with Stone 22–23.
 - **Revisit trigger**: Stone 22 (corpus QA) and Stone 23 (canonical six data types) — when emissions schema is being finalized. The taxonomy above is the working spec; refinements happen in implementation.
 - **Working assumption in the meantime**: "Emission" in any Stone 13–21 teaching means the full taxonomy above, not just company-specific filings. A fed-rate-move is an emission. A competitor's 8-K is an emission for sector peers. Macro is real.
+
+### Worldlets — narrow synthetic financial failure-mode drills (2026-05) — FUTURE RESEARCH, NOT COMMITTED
+
+- **Status (lead with the conclusion)**: **NOT COMMITTED. Future research direction.** Synthetic-world artifacts cannot validate alpha (only time-revealed labels score, per DESIGN.md #4 and the Three Arenas section). Worldlets would serve as COGNITION CURRICULUM and DRILL ENVIRONMENTS, not as evidence of alpha. Their scores would never enter the promotion gate.
+- **Context**: Surfaced 2026-05-16 in an external-perspective synthesis review (see Constitution tightening v3). The current synthetic toy ([src/fingym/toys/synthetic_market.py](src/fingym/toys/synthetic_market.py)) is one generic 3-state world. A natural extension would be a LIBRARY of narrow financial failure-mode drills — small constructed environments each modeling one specific pattern. Examples surfaced: silent guide-down risk in SaaS; refinancing cliffs in cyclicals; operating-leverage snapback in industrials; long-duration discount-rate compression in growth equities; commodity input-cost squeeze; management credibility collapse; options-underpriced earnings move; bank funding-cost shock. Each worldlet would have hidden state, observation emissions, market-belief distortion, scored outcome — the same shape as the existing 3-state synthetic_market toy but with finance-specific failure-mode semantics.
+- **Why deferred**: Building ~10 worldlets is real engineering effort that we cannot justify without evidence from Phase 1–2 that historical replay alone is insufficient. The default path is to run Phase 1–2 with raw real-market evidence and see whether the agents struggle in ways a synthetic curriculum would address. If they do, we revisit. If they don't, worldlets stays parked.
+- **Revisit trigger**: Phase 2+ if historical replay reveals that agents systematically fail to recognize specific financial-pattern categories that a worldlet drill would address. Specific signal: Phase 4 promotion gate consistently rejects skill candidates of one pattern-type while agents demonstrably "see" the pattern in narrative — indicating raw-evidence reasoning isn't generalizing the pattern.
+- **Working assumption in the meantime**: Synthetic environments stay generic and abstract (the current 3-state `synthetic_market.py`) — used only for evaluator validation, not cognition curriculum. The default path to agent learning is Phase 1's historical replay over raw real-market evidence.
+- **What this concept must NOT become**: An "AlphaEvolve-style search over worldlet-formula space" that promotes skills based on synthetic scoring. Synthetic scores never enter the promotion gate. If we ever build worldlets, they remain training-only (curriculum, stress tests, failure-mode drills) — they do not produce evidence that promotes skills into L3 memory. This is the Three Arenas commitment from DESIGN.md made explicit at the implementation level.
 
 ---
 

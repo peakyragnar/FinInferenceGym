@@ -10,6 +10,8 @@ Operational specifics, phasing, and build steps live in [BUILD.md](BUILD.md). Vo
 
 ## Purpose
 
+> FinInferenceGym is a contract-scored, point-in-time replay engine for evolving financial belief systems.
+
 A system that absorbs frontier AI improvements to generate calibrated, verifiable alpha in equity markets through hidden-state inference, market-implied belief recovery, and rigorous evaluator-driven self-improvement.
 
 ## Goal
@@ -196,6 +198,28 @@ The two axes interact. A better model fine-tuned on better data outperforms eith
 
 ---
 
+## The Three Arenas
+
+The system evaluates agents across three structurally distinct arenas. Each arena has a different **epistemic status** — what it can and cannot validate. Treating them as interchangeable is a category error and a frequent failure mode.
+
+| Arena | Scope | What it's FOR | What it CANNOT do |
+|---|---|---|---|
+| **Historical replay** | Finite — ~10 years × analytical universe × multiple horizons | LEARNING ground. Agents form beliefs over real evidence; skills emerge as candidates; the promotion gate filters. Grounded by real outcomes. | Past regime is not future regime. Bounded data — exhaustible in principle by aggressive search. Survivorship bias if not corrected (delisted shadow universe mitigates). |
+| **Synthetic worlds** | Infinite — generate as many episodes as we want | VALIDATING THE HARNESS. Bug-catching for the evaluator, contract validator, and agent code. Stress-testing reasoning under constructed conditions. | **Cannot validate alpha.** Made-up physics; a skill that wins on a synthetic world proves nothing about real markets. Synthetic data MUST NOT enter the promotion gate as evidence — only time-revealed labels from real data score (commitment #4). |
+| **Live operation** | Slow — calendar speed, one day per day | GROUND TRUTH. Does the system actually work going forward against the market? Final examiner for any skill that survived historical replay. | Slow. Scarce. By construction; cannot be sped up. Cannot be brute-forced for discovery — used to confirm or kill, not to explore. |
+
+The arenas work in **sequence**, not as alternatives:
+
+1. **Synthetic** validates the harness BEFORE real data flows in (Phase 0).
+2. **Historical replay** generates candidate skills against real past outcomes; the promotion gate filters (Phases 1–4).
+3. **Live operation** is the final test of skills that survived historical replay (Phase 3+).
+
+The promotion gate consumes labels ONLY from historical replay and live operation. **Synthetic scores never gate memory promotion.** This is non-negotiable — it is the structural defense against the most seductive failure mode: calibrating against a world we made up. See DECISIONS.md "Worldlets" for a parked future-research direction that respects this boundary.
+
+The trajectory store accumulates Contracts from historical replay AND live operation. Year-2 own-model SFT (commitment #8) reads from this store.
+
+---
+
 ## Operational Constraints
 
 Rules for how we operate inside the architecture.
@@ -224,7 +248,17 @@ If structural conditions change (e.g., the operator scales meaningfully), these 
 
 ## Out of Scope
 
-Explicitly rejected:
+### What this system is NOT (purpose-level positioning)
+
+Three system-level mischaracterizations the architecture is explicitly NOT — seductive framings that don't match what's being built:
+
+- **"LLM reads all public information and synthesizes better than Wall Street to generate alpha."** Too weak. The model is the cognitive engine, not the system. The system is what verifies the model's output. An LLM alone does not survive the calibration discipline this architecture imposes.
+- **"Invent a fake economy, train an agent in it, then trade real stocks."** Fantasy. Synthetic worlds cannot validate alpha; only time-revealed labels from real data score (#4 + Three Arenas). Skills promoted from synthetic-only evidence would be calibrating against a world we made up.
+- **"Search over historical data until something works."** Data mining. The ~10-year × analytical-universe dataset is bounded; aggressive search exhausts it via overfit. The promotion gate's strictness (held-out replay + cross-model regression + survivorship check + domain-of-validity declaration) is the defense.
+
+The architecture is none of these. The architecture-level rejections follow.
+
+### Explicitly rejected at the architecture level:
 
 - **Sharpe optimization** as a target. Log-wealth is the objective.
 - **Narrative scoring** ("does this insight sound reasonable"). Only time-revealed labels score.
