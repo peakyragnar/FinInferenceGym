@@ -72,7 +72,7 @@ The complete plan, by layer. Stones taught and committed are marked **✅**; sto
 - Stone 11 ✅ — expression-type tagging within `TradeAction`. Same forecast can be expressed many ways (equity-long, option-call, option-spread, vol-long, pair, etc.) with different payoff structures. The scoreboard carries `expression_type` as the broad category; specific trade details (strike, expiration, size, premium) live inside the `TradeAction` object on the Contract. Per-expression-type promotion gate. `NoAction` is a typed peer, not folded here. Full summary in Layer 2 body below.
 - Stone 11b ✅ — **Forecast Ledger** (Constitution v5). Append-only record of every (forecast, realized bucket) pair indexed by signal class. Per-signal-class empirical reliability computed over many forecasts: "when this agent claimed X% confidence on bucket B in signal class Y, what fraction of those claims realized B?" Replaces the removed Stone 11a (market-delta scoring). MVP at `src/fingym/ledger/forecast_ledger.py` (in-memory, append-only); read API `reliability_for_signal_class` returns per-claim-bucket (avg claim, observed rate, count). Real-data version (Phase 2 NEW) is a Postgres view over `forecasts` + `realized_returns` — same read API. Full distilled summary in Layer 2 body below.
 - Stone 11c ✅ — **Calibration shrinkage** (Constitution v5). Rewrites the agent's raw forecast `F_AI` toward per-signal-class empirical reliability from the Forecast Ledger via a sample-size-weighted blend: `shrunk = (n × empirical + k × raw) / (n + k)` where `n` is the Ledger sample size in the matching claim bin and `k` is operator-tunable `prior_strength`. Empty Ledger = identity (raw passes through). Dense Ledger = empirical overwrites raw. Applied bin-by-bin to the 5-bucket forecast, then renormalized. `F_AI_calibrated` is the only thing the action gate sees; raw is preserved for audit. Full distilled summary in Layer 2 body below.
-- Stone 11d ⬜ — **Tradable-Edge Action Engine / margin-of-safety gate** (Constitution v5). Calibrated expected utility under Kelly given `F_AI_calibrated` and the cost model. The signed scalar `tradable_edge_score = calibrated_expected_utility − margin_of_safety_threshold` is the gate verdict: positive → trade; non-positive → NoAction. Full summary lands when taught.
+- Stone 11d ✅ — **Tradable-Edge Action Engine / margin-of-safety gate** (Constitution v5). Calibrated expected utility under Kelly given `F_AI_calibrated` and the cost model. The signed scalar `tradable_edge_score = calibrated_expected_utility − margin_of_safety_threshold` is the gate verdict: positive → trade; non-positive → NoAction. Full distilled summary in Layer 2 body below.
 - Stone 11e ⬜ — **Market-State Baseline (Track C) isolation** (Constitution v5). Separate `src/fingym/baseline/` module reads only headline observables (rates, vol, FX, commodities) and emits its own forecast distribution. Code-level isolation: `agents/` cannot import from `baseline/`. The Baseline's processed forecast is never seen by the AI Core; the audit layer computes `incremental_AI_edge = AI realized edge − Baseline realized edge` as an attribution column. Full summary lands when taught.
 - Stone 12 ✅ — process-quality flag (narrow form). Single mechanical check per update: was there an emission (transcript, filing, fundamental release, news event) with `as_known` in the time window before this update? If yes, `motivated`. If no, `unmotivated` — agent updated with nothing new in the world to react to. Per-agent aggregate `unmotivated_update_rate`; promotion gate caps it (initial value: 10%). Survives Constitution v5 at the concept level; the body summary will be reframed under v5 vocabulary in the upcoming teaching pass.
 - Stone 13 ✅ — decision-quality with `NoAction` as first-class peer. Coherence checks on the agent's action against the inputs (forecast, calibrated expected utility, margin-of-safety threshold, costs). Survives Constitution v5 at the concept level; the v5 reformulation changes the coherence math from "gap > cost" to "tradable_edge_score > 0," and the body summary will be reframed in the upcoming teaching pass.
@@ -734,9 +734,65 @@ weight_on_empirical = n / (n + k)
 
 **One sentence.** Calibration shrinkage rewrites the agent's raw claim toward its empirical Ledger track record via a sample-size-weighted blend — empty Ledger passes the claim through unchanged; long miscalibrated history overwrites it with the empirical truth-rate — and the resulting `F_AI_calibrated` is what (and only what) the action gate sees.
 
-### Stones 11d, 11e — Tradable-Edge Action Engine / Market-State Baseline (pending teaching)
+### Stone 11d — Tradable-Edge Action Engine / margin-of-safety gate (Constitution v5)
 
-Under Constitution v5, action gating is on calibrated expected utility clearing a margin-of-safety threshold, and the Market-State Baseline runs in code-level isolation. Full distilled summaries — the action-gate verdict signed scalar `tradable_edge_score`, the Kelly-equivalent under `F_AI_calibrated`, and the Baseline attribution columns — land when these stones are taught. TOC entries with one-line descriptions are above (Layer 2 section).
+**The setup.** The calibrator (Stone 11c) hands a calibrated forecast `F_AI_calibrated` to the Action Engine. The Engine has one job: decide whether to trade, and if so how much. The decision is gated by a single signed scalar — `tradable_edge_score` — built from the calibrated forecast, a cost model, and a margin-of-safety threshold.
+
+**The verdict.**
+
+```
+tradable_edge_score = calibrated_expected_utility − margin_of_safety_threshold
+```
+
+Positive → trade with conservative Kelly-style sizing. Non-positive → `NoAction`. **One signed scalar, one boolean.** No other path to trade exists.
+
+**Worked example — one calibrated forecast through the pipeline.** Suppose the calibrator emits:
+
+| Bucket | Return midpoint | Calibrated probability |
+|---|---:|---:|
+| `below_minus_5` | -8% | 0.10 |
+| `minus_5_to_0` | -2.5% | 0.20 |
+| `0_to_5` | +2.5% | 0.40 |
+| `5_to_10` | +7.5% | 0.20 |
+| `above_plus_10` | +12% | 0.10 |
+
+Probability-weighted return = +2.4%. Costs (round-trip) = spread 0.30% + commission 0.10% + sqrt-law impact 0.40% + alpha decay 0.20% = 1.00%. So `calibrated_expected_utility = 2.4% − 1.0% = +1.4%`. With `margin_of_safety_threshold = 1.0%`, `tradable_edge_score = +1.4% − 1.0% = +0.4%`. Positive → trade fires.
+
+**Three adversarial agents through the gate** (Cluster A reliability assumed, n=100 each):
+
+| Agent (regime) | Raw → calibrated on lead bucket | Expected return after costs | `tradable_edge_score` | Verdict |
+|---|---|---:|---:|---|
+| ConfidentAgent (raw 0.95 on `below_minus_5`) | 0.95 → 0.38 | -1.1% on short (calibrated return ≈ -0.1%; cost eats it) | -2.1% | **NoAction** |
+| UniformAgent (0.20 × 5) | unchanged | -1.0% (no direction, cost only) | -2.0% | **NoAction** |
+| BayesianAgent — strong signal, well-sampled bin | mild correction | +2.2% | +1.2% | **trade** |
+| BayesianAgent — strong signal, undersampled extreme | shrunk toward empirical 0.62 | +0.6% | -0.4% | **NoAction** |
+| BayesianAgent — mild signal | unchanged | -0.3% | -1.3% | **NoAction** |
+
+The bullshitter's conviction trade is killed at the gate. The uninformed agent never trades. The careful thinker trades only when both the signal AND the Ledger history support it.
+
+**The three knobs.**
+
+1. **`F_AI_calibrated`** is the only forecast the gate sees. Raw never multiplies a payoff. Audit only.
+2. **Cost model.** In the toy MVP, a single round-trip constant (set per signal class). Cluster C extends this with per-name liquidity, square-root-law impact at deployable size, and alpha decay over horizon.
+3. **`margin_of_safety_threshold`.** Operator-tunable. Conservative buffer for everything the Engine can't see: residual miscalibration, regime change since the Ledger filled, model risk, adverse selection. In the toy MVP, a module-level constant; in production, per-signal-class tuning.
+
+**Three properties to lock in.**
+
+1. **`NoAction` is a typed first-class peer of `TradeAction`.** Not absence-of-decision; an emitted decision. Scored on the same coherence shape by Stone 13 — good restraint is graded the same way good trades are. Defends against BIAS_PATTERNS #12 (trade-for-trade's-sake).
+2. **The threshold is the only thing between a calibrated edge and a trade.** A 0.1% edge over 0% threshold trades. A 0.9% edge over 1.0% threshold doesn't. Operator tunes threshold for risk appetite; the cost model is determined by reality, not preference.
+3. **Sizing is fractional Kelly, not full Kelly.** Full Kelly maximizes long-run log-wealth but is volatility-pessimal under estimation error. The toy MVP uses `k = 0.25` (quarter Kelly); production tunes per signal class.
+
+**Connection forward.** Stone 11e (Market-State Baseline) runs an identical Action Engine on a code-level-isolated baseline forecast; the audit layer computes `incremental_AI_edge = AI realized edge − Baseline realized edge` as an attribution column. Stones 13 (decision coherence) and 14 (capacity-adjusted realized return) consume `tradable_edge_score` and the chosen `TradeAction` for scoring.
+
+**In code (when built — Cluster B 11d-b).** `src/fingym/action/action_engine.py` will expose `decide(calibrated_forecast, cost_model, threshold) -> TradeAction | NoAction`. The function computes `calibrated_expected_utility` under the calibrated distribution, subtracts costs, compares to the threshold, and emits either a `TradeAction` with fractional-Kelly sizing or `NoAction`. Both populate the Contract's `final_action`, `calibrated_expected_utility`, and `tradable_edge_score` fields.
+
+**One sentence.** The Tradable-Edge Action Engine emits one signed scalar — `tradable_edge_score = calibrated_expected_utility − margin_of_safety_threshold` — as the single gate between forecast and trade; `NoAction` is a typed first-class peer, positive verdicts trade at fractional Kelly under `F_AI_calibrated`, the raw forecast never multiplies a payoff, and operator preference enters only through the threshold and Kelly fraction.
+
+### Stone 11e — Market-State Baseline (Track C) isolation (pending teaching)
+
+Under Constitution v5, a separate `src/fingym/baseline/` module reads only headline observables (rates, vol, FX, commodities) and emits its own forecast distribution. Code-level isolation: `agents/` cannot import from `baseline/` (import-linter rule). The Baseline's processed forecast is never seen by the AI Core; the audit layer computes `incremental_AI_edge = AI realized edge − Baseline realized edge` as an attribution column. The Baseline runs an identical Action Engine on its own forecast.
+
+The full distilled summary with worked tables — what the headline-observables space looks like, the Baseline's forecasting model (kept deliberately simple), the attribution math — lands when Stone 11e is taught (Cluster I).
 
 ### Stone 12 — process-quality flag (narrow form) — v5 reframing pending teaching
 
