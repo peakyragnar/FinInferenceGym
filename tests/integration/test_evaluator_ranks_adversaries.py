@@ -2,26 +2,24 @@
 
 Property under test:
 
-  Across N episodes with randomized truth and seed, the per-agent mean
-  scores order as
+  Across N episodes with randomized state and seed, the per-agent mean scores
+  order as
 
       BayesianAgent < UniformAgent < ConfidentAgent      (Brier, log_score)
 
   (lower = better). And:
 
-    - UniformAgent's mean Brier is exactly 2/3 by symmetry — for any
-      truth distribution in a 3-state hypothesis space.
+    - UniformAgent's mean Brier is exactly (N-1)/N by symmetry. For 5 buckets,
+      that's 4/5 = 0.8. The per-episode Brier is constant; the mean across N
+      episodes is also 4/5 regardless of how the realized bucket distributes.
 
-PYRAMID.md Stone 16 demonstrates the property by inspection;
-this file (Stone 17) locks it in as a CI gate. Any future change to the
-evaluator, the toy world, or the adversarial agents that breaks the
-ordering will fail this test.
+PYRAMID.md Stone 16 demonstrates the property by inspection; this file (Stone 17)
+locks it in as a CI gate. Any future change to the evaluator, the toy world,
+or the adversarial agents that breaks the ordering will fail this test.
 
-The pre-v5 "Market" parallel agent and `mean_gap` (belief-delta-on-truth)
-tests were removed by the Constitution v5 cleanup pass alongside the
-`belief_delta_on_truth` scoring function and the Stone 11a market-belief
-priors. New v5 integration tests for the Forecast Ledger reliability and
-calibration shrinkage land when those stones are taught.
+Phase 1 NEW Cluster A: agents now emit forecasts over realized-return BUCKETS
+(not state beliefs). UniformAgent's mean Brier is now (N-1)/N = 0.8 for 5
+buckets (was 2/3 for 3 states pre-Cluster-A).
 """
 
 from __future__ import annotations
@@ -29,10 +27,11 @@ from __future__ import annotations
 import pytest
 
 from fingym.toys.adversarial_agents import AgentMeans, aggregate_n_episodes
+from fingym.toys.synthetic_market import RETURN_BUCKETS
 
 # Agent names as emitted by aggregate_n_episodes. Kept as constants so
 # renaming in one place is the only change required to keep tests valid.
-CONFIDENT = "ConfidentAgent(decaying, p=0.95)"
+CONFIDENT = "ConfidentAgent(below_minus_5, p=0.95)"
 UNIFORM = "UniformAgent"
 BAYESIAN = "BayesianAgent"
 
@@ -49,28 +48,43 @@ def per_agent() -> dict[str, AgentMeans]:
 def test_brier_ranks_bayesian_uniform_confident(
     per_agent: dict[str, AgentMeans],
 ) -> None:
-    """Mean Brier: BayesianAgent << UniformAgent << ConfidentAgent."""
-    assert per_agent[BAYESIAN].mean_brier < per_agent[UNIFORM].mean_brier
-    assert per_agent[UNIFORM].mean_brier < per_agent[CONFIDENT].mean_brier
+    """Mean Brier: BayesianAgent < UniformAgent < ConfidentAgent."""
+    assert per_agent[BAYESIAN].mean_brier < per_agent[UNIFORM].mean_brier, (
+        f"Expected BayesianAgent ({per_agent[BAYESIAN].mean_brier:.3f}) "
+        f"< UniformAgent ({per_agent[UNIFORM].mean_brier:.3f})"
+    )
+    assert per_agent[UNIFORM].mean_brier < per_agent[CONFIDENT].mean_brier, (
+        f"Expected UniformAgent ({per_agent[UNIFORM].mean_brier:.3f}) "
+        f"< ConfidentAgent ({per_agent[CONFIDENT].mean_brier:.3f})"
+    )
 
 
 def test_log_score_ranks_bayesian_uniform_confident(
     per_agent: dict[str, AgentMeans],
 ) -> None:
-    """Mean log_score: BayesianAgent << UniformAgent << ConfidentAgent."""
-    assert per_agent[BAYESIAN].mean_log_score < per_agent[UNIFORM].mean_log_score
-    assert per_agent[UNIFORM].mean_log_score < per_agent[CONFIDENT].mean_log_score
+    """Mean log_score: BayesianAgent < UniformAgent < ConfidentAgent."""
+    assert per_agent[BAYESIAN].mean_log_score < per_agent[UNIFORM].mean_log_score, (
+        f"Expected BayesianAgent ({per_agent[BAYESIAN].mean_log_score:.3f}) "
+        f"< UniformAgent ({per_agent[UNIFORM].mean_log_score:.3f})"
+    )
+    assert per_agent[UNIFORM].mean_log_score < per_agent[CONFIDENT].mean_log_score, (
+        f"Expected UniformAgent ({per_agent[UNIFORM].mean_log_score:.3f}) "
+        f"< ConfidentAgent ({per_agent[CONFIDENT].mean_log_score:.3f})"
+    )
 
 
 def test_uniform_mean_brier_equals_theoretical_baseline(
     per_agent: dict[str, AgentMeans],
 ) -> None:
-    """UniformAgent's mean Brier is 2/3 by symmetry, exactly.
+    """UniformAgent's mean Brier is (N-1)/N by symmetry, exactly.
 
-    For a uniform belief {1/3, 1/3, 1/3} in a 3-state space, Brier evaluates
-    to (1/3)^2 + (1/3)^2 + (2/3)^2 = 6/9 = 2/3 for ANY truth state. So the
-    per-episode Brier is constant; the mean across N episodes is also 2/3
-    regardless of how the truth distributes.
+    For a uniform forecast of 1/N over N buckets, with one realized bucket,
+    Brier = (1/N - 1)^2 + (N-1) * (1/N)^2 = (N-1)/N. For N=5 buckets, that's
+    0.8. Per-episode Brier is constant; the mean across N episodes is also
+    (N-1)/N regardless of which buckets are realized.
     """
-    expected = 2.0 / 3.0
-    assert abs(per_agent[UNIFORM].mean_brier - expected) < 1e-9
+    n = len(RETURN_BUCKETS)
+    expected = (n - 1) / n  # 4/5 = 0.8 for 5 buckets
+    assert abs(per_agent[UNIFORM].mean_brier - expected) < 1e-9, (
+        f"Expected UniformAgent Brier = {expected}; got {per_agent[UNIFORM].mean_brier}"
+    )

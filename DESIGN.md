@@ -300,6 +300,50 @@ Michael's standing audit questions:
 
 ---
 
+## Operator Configuration and Observability
+
+The auditor's role (commitment #10, Layer 5) requires operator-facing visibility into every decision the system makes and tunability over every parameter that isn't an architectural commitment. The architecture commits to this as a load-bearing property — not an operational nice-to-have.
+
+### Locked vs tunable
+
+| **Architecturally locked** (changes only through DECISIONS.md deliberation) | **Operationally tunable** (operator changes through versioned config; audit log records each change) |
+|---|---|
+| Bayes update math | Cost-model calibration constants (e.g., `k` in the square-root impact law) |
+| Kelly criterion | Per-asset-class spread schedules |
+| Proper scoring rules (Brier, log score) | Cost-uncertainty buffer per asset class |
+| Cromwell's rule | Residual-miscalibration buffer per signal class |
+| Calibration shrinkage formula structure | `prior_strength` parameter for the shrinkage weighting |
+| Cognition / verification boundary | Minimum sample size for the Action Engine gate to act on a signal class |
+| Code-level isolation rules (`agents/` ↛ `baseline/`) | Forecast Ledger refresh cadence |
+| Forecast Ledger view structure | Per-name, per-signal-class, per-agent kill switches |
+| Six data types + provenance | Promotion gate threshold values |
+| Four-check promotion gate | Margin-of-safety slack composition weights |
+| Three Arenas | Emission materiality thresholds (per category: rates, FX, commodities, inflation, equity macro, sector, direct) |
+| Emissions taxonomy structure (direct / sector / macro / cross-asset) | Consensus-delta and surprise-magnitude normalization constants |
+| Five-component v5 architecture (AI Core + Ledger + Action Engine + Baseline + Scoring + Memory) | |
+
+**Locked parameters cannot be changed in operation.** They are architectural commitments. Changing them requires a DECISIONS.md entry and explicit deliberation.
+
+**Tunable parameters change through versioned config files.** Every change is a git commit (audit trail). Every change ships through the same pre-commit + review process as code. The operator can tune; the architecture stays intact.
+
+### What the auditor must see
+
+Per-decision visibility:
+- The Contract's verification fields: `calibrated_forecast`, `calibrated_expected_utility`, `margin_of_safety` breakdown (all components), `tradable_edge_score`, `kelly_fraction_applied`, `final_action`
+- The cost-model inputs that produced the margin-of-safety threshold at decision time
+
+Aggregate visibility:
+- Per-signal-class Forecast Ledger reliability over rolling windows (drift detection)
+- Cost-model accuracy: estimated vs realized costs (Stone 14 feedback)
+- Promotion gate activity: skills proposed, evaluated, promoted, rejected, retired
+- Per-agent / per-horizon / per-expression scoreboard slices over time
+
+### Implementation phases
+
+The data substrate (scoreboard, Contract verification fields, promotion log) is in place from Phase 1 NEW. Operator-facing presentation (dashboards) and operator override (kill switches) land when live deployment begins (Phase 3). The architecture commits to making them possible from day 1; the implementation lands when needed. Engineering specification lives in [TECHNICAL.md](TECHNICAL.md) "Operator Configuration and Observability."
+
+---
+
 ## Failure Modes & Mitigations
 
 | Failure mode | Mitigation |

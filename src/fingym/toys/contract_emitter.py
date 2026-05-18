@@ -1,19 +1,14 @@
 """contract_emitter.py — Stone 19 demo: BayesianAgent wrapped to emit Contracts.
 
-Proves the Agent Protocol (src/fingym/agents/interface.py) compiles against
-a concrete implementation. The existing BayesianAgent from adversarial_agents
-produces a 3-state distribution; this adapter wraps it to emit a valid
-pydantic Contract per CONTRACT.md (v5).
+Proves the Agent Protocol (src/fingym/agents/interface.py) compiles against a
+concrete v5 implementation. The BayesianAgent from adversarial_agents produces
+a forecast distribution over realized-return BUCKETS; this adapter wraps it
+to emit a valid pydantic Contract per CONTRACT.md (v5).
 
 This is the test fixture for Phase 0 substep 6's exit criterion: "Model
-interface contract is documented; a stub agent compiles against it."
-
-Under Constitution v5 (2026-05-18) the Contract's cognition fields hold a
-forecast distribution over the toy's three states (treated as bucket labels
-for the toy's realized-return analog). The full v5 single-believer-over-
-realized-returns refactor lands in Phase 1 NEW Cluster A; this stub uses
-the surviving Phase 0 toy world (three states {strengthening, stable,
-decaying}) as the bucket alphabet for the forecast.
+interface contract is documented; a stub agent compiles against it." Under
+Phase 1 NEW Cluster A, the stub now uses the actual v5 cognition path —
+forecast over realized-return buckets, no state-cognition by the agent.
 
 Run: `uv run python -m fingym.toys.contract_emitter`
 """
@@ -31,21 +26,11 @@ from fingym.agents.contract import (
 )
 from fingym.agents.contract_validator import validate_contract
 from fingym.toys.adversarial_agents import BayesianAgent
-from fingym.toys.synthetic_market import Emission
-
-# Phase 0 stub uses a uniform prior over the three toy states. Under v5, the
-# pre-Phase-1-Cluster-A stub treats the toy state alphabet as the forecast
-# bucket labels; Cluster A will refactor the toy to emit realized returns
-# directly and forecast over them.
-_STUB_FORECAST_PRIOR: dict[str, float] = {
-    "strengthening": 1.0 / 3.0,
-    "stable": 1.0 / 3.0,
-    "decaying": 1.0 / 3.0,
-}
+from fingym.toys.synthetic_market import Emission, uniform_forecast_over_buckets
 
 
 class BayesianContractEmitter:
-    """Wraps a BayesianAgent to emit valid Contracts per CONTRACT.md (v5).
+    """Wraps a BayesianAgent to emit valid v5 Contracts.
 
     Satisfies the Agent[list[Emission]] Protocol structurally: has an
     `agent_id` attribute and an `emit_contract(raw_evidence)` method
@@ -56,27 +41,26 @@ class BayesianContractEmitter:
         self.agent_id = "BayesianContractEmitter@stone19"
         self.model_id = "fingym.bayesian.v1"
         self.prompt_version = "stone19_demo"
-        # BayesianAgent uses the toy state alphabet as its prior keys.
-        # The contract emitter treats those same keys as forecast bucket labels.
-        self._bayesian = BayesianAgent(
-            {"strengthening": 1.0 / 3.0, "stable": 1.0 / 3.0, "decaying": 1.0 / 3.0},
-            name="BayesianAgent",
-        )
+        # The BayesianAgent's hypothesis space is realized-return buckets.
+        # Uniform prior — the agent has no prior information about the company.
+        self._bayesian = BayesianAgent(uniform_forecast_over_buckets(), name="BayesianAgent")
 
     def emit_contract(self, raw_evidence: list[Emission]) -> Contract:
-        """Form a forecast from the emission stream and emit a Contract.
+        """Form a forecast from the emission stream and emit a v5 Contract.
 
-        Each emission is observed via the wrapped BayesianAgent. After all
-        emissions are processed, the agent's final belief over the toy state
-        alphabet is packaged into a ForecastDistribution along with a
-        signal_class_id tag, falsifier, realized return plan, and a single-
-        step cognitive audit trail (Phase 0 — no iteration yet).
+        The wrapped BayesianAgent observes each emission and updates its forecast
+        over realized-return buckets via Bayes on the bucket-conditional emission
+        likelihoods. After all emissions are processed, the agent's final
+        forecast is packaged into a ForecastDistribution along with a
+        signal_class_id tag, falsifier, realized return plan, and a single-step
+        cognitive audit trail (Phase 0 — no iteration yet).
         """
-        initial_forecast = ForecastDistribution(probabilities=dict(_STUB_FORECAST_PRIOR))
+        initial_probabilities = {b: p for b, p in uniform_forecast_over_buckets().items()}
+        initial_forecast = ForecastDistribution(probabilities=initial_probabilities)
         for emission in raw_evidence:
             self._bayesian.observe(emission)
         final_forecast = ForecastDistribution(
-            probabilities={str(s): p for s, p in self._bayesian.belief.items()}
+            probabilities={b: p for b, p in self._bayesian.forecast.items()}
         )
         decision_time = datetime.now(UTC)
 
@@ -89,38 +73,39 @@ class BayesianContractEmitter:
             evidence_ids=[],  # toy world; no L0 emissions table at Phase 0
             data_sources_used=["toy_synthetic_market"],
             forecast_distribution=final_forecast,
-            signal_class_id="toy_synthetic_market_3state",
-            thesis_category="toy_phase_0_stub",
+            signal_class_id=self._bayesian.signal_class_id,
+            thesis_category="toy_phase_1_new_cluster_a",
             horizon="12_ticks",
             recommended_action=NoAction(
                 reason=(
-                    "Stone 19 demo emits NoAction; the stub doesn't yet"
-                    " decide trades. The Tradable-Edge Action Engine"
-                    " (Phase 1 NEW Cluster B) will populate the engine's"
-                    " final_action verdict from calibrated expected utility."
+                    "Stone 19 demo emits NoAction; the stub doesn't yet decide"
+                    " trades. The Tradable-Edge Action Engine (Phase 1 NEW"
+                    " Cluster B) will populate final_action via calibrated"
+                    " expected utility."
                 )
             ),
             recommended_size=0.0,
             falsifiers=[
                 Falsifier(
                     description=(
-                        "If the realized state at the horizon is not the"
-                        " highest-probability bucket in forecast_distribution,"
+                        "If the realized log return at horizon falls in a bucket"
+                        " other than the modal bucket of forecast_distribution,"
                         " the forecast's mode was wrong."
                     )
                 )
             ],
             realized_return_plan=RealizedReturnPlan(
                 horizon="12_ticks",
-                labelling_function="toy_realized_state_at_horizon",
+                labelling_function="toy_realized_return_at_horizon",
             ),
             cognitive_audit_trail=[
                 CognitiveStep(
                     step_index=0,
                     initial_forecast=initial_forecast,
                     additional_reasoning=(
-                        f"Observed {len(raw_evidence)} emissions from the"
-                        f" toy world; updated forecast via Bayes on each."
+                        f"Observed {len(raw_evidence)} emissions from the toy"
+                        f" world; updated forecast via Bayes on each, using the"
+                        f" pre-computed bucket-conditional emission likelihoods."
                     ),
                     updated_forecast=final_forecast,
                     action_changed=False,

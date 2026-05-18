@@ -2,35 +2,48 @@
 
 A hidden company occupies one of three states: strengthening, stable, or decaying.
 Each tick, the company emits one of three observation kinds: strong, mixed, or weak.
-The mapping from state to emission is probabilistic — the likelihood table is the
-rule connecting hidden state to visible emissions.
+At horizon, the company produces a realized log return drawn from a state-conditional
+normal distribution. The state structure is INTERNAL to the simulation — agents
+never see it. Agents observe the emission stream and forecast a distribution over
+realized-return BUCKETS at horizon.
 
 This module is the Layer-3 fixture for evaluator validation. The world is
-deliberately constructed so that we know the hidden state and the true likelihoods;
-that is what makes it the place where the evaluator's correctness can be checked
-against ground truth (PYRAMID.md Stone 15, intuitions.md #7).
+deliberately constructed so we know the ground truth (state + the state-conditional
+emission + return distributions); that is what makes it the place where the
+evaluator's correctness can be checked against ground truth (PYRAMID.md Stone 15,
+intuitions.md #7).
 
-The state alphabet (CompanyState) and emission alphabet (Emission) are encoded as
-Literal types so mypy enforces the closed hypothesis space at the type level.
+Under Constitution v5 (Stones 7b, 11b):
+- The agent's hypothesis space is realized-return buckets (NOT states).
+- The toy keeps the 3-state hidden generating process as INVISIBLE simulation
+  scaffolding — a convenient way to construct a non-trivial joint distribution of
+  (emission stream, realized return).
+- The bucket-conditional emission likelihood `P(emission | bucket)` is pre-computed
+  from the toy's structure and exposed for agents that want to do Bayes over buckets.
+
+The state alphabet (CompanyState), emission alphabet (Emission), and return-bucket
+alphabet (ReturnBucket) are all encoded as Literal types so mypy enforces the closed
+hypothesis spaces at the type level.
 
 Run: `uv run python -m fingym.toys.synthetic_market`
-
-This file implements the surviving Phase 0 parts of Stone 15 after the Constitution
-v5 cleanup pass (2026-05-18): the world (likelihood table + emission sampler +
-frequency verification) and a single Bayesian believer over the three states. The
-pre-v5 two-believer setup, the `STONE_11A_*` prior constants, and the Stone 11a
-scoreboard demo were removed by Constitution v5 (see DECISIONS.md "Constitution
-tightening v5"). The v5 single-believer-over-realized-returns refactor and the
-Forecast Ledger MVP land as Phase 1 NEW Cluster A.
 """
 
 import random
+from statistics import NormalDist
 from typing import Literal
 
 type CompanyState = Literal["strengthening", "stable", "decaying"]
 type Emission = Literal["strong", "mixed", "weak"]
+type ReturnBucket = Literal[
+    "below_minus_5",
+    "minus_5_to_0",
+    "zero_to_plus_5",
+    "plus_5_to_plus_10",
+    "above_plus_10",
+]
 type LikelihoodTable = dict[CompanyState, dict[Emission, float]]
 type Belief = dict[CompanyState, float]
+type ForecastOverBuckets = dict[ReturnBucket, float]
 
 # P(emission | state). Rows sum to 1. This table IS the world.
 LIKELIHOODS: LikelihoodTable = {
@@ -41,6 +54,31 @@ LIKELIHOODS: LikelihoodTable = {
 
 STATES: tuple[CompanyState, ...] = ("strengthening", "stable", "decaying")
 EMISSIONS: tuple[Emission, ...] = ("strong", "mixed", "weak")
+RETURN_BUCKETS: tuple[ReturnBucket, ...] = (
+    "below_minus_5",
+    "minus_5_to_0",
+    "zero_to_plus_5",
+    "plus_5_to_plus_10",
+    "above_plus_10",
+)
+
+# Realized log return at horizon is drawn from N(mean, std) per state.
+# Strengthening pays positive returns; decaying pays negative; stable centers at 0.
+STATE_RETURN_PARAMS: dict[CompanyState, tuple[float, float]] = {
+    "strengthening": (0.07, 0.04),
+    "stable": (0.00, 0.03),
+    "decaying": (-0.07, 0.04),
+}
+
+# Bucket boundaries in log-return space. Upper edge of each bucket; the last
+# bucket extends to +infinity.
+_BUCKET_UPPER_EDGES: dict[ReturnBucket, float] = {
+    "below_minus_5": -0.05,
+    "minus_5_to_0": 0.00,
+    "zero_to_plus_5": 0.05,
+    "plus_5_to_plus_10": 0.10,
+    "above_plus_10": float("inf"),
+}
 
 
 def sample_emission(state: CompanyState, rng: random.Random) -> Emission:
@@ -87,10 +125,136 @@ def likelihood(emission: Emission, state: CompanyState) -> float:
 
 
 def update(belief: Belief, emission: Emission) -> Belief:
-    """One Bayesian update: posterior = prior * likelihood / normalize."""
+    """One Bayesian update over states: posterior = prior * likelihood / normalize.
+
+    Kept for the simulation's own internal use and legacy demos. Agents under v5
+    do NOT use this — they update over realized-return buckets via
+    `update_forecast_over_buckets()`.
+    """
     unnorm: Belief = {state: belief[state] * likelihood(emission, state) for state in belief}
     total = sum(unnorm.values())
     return {state: p / total for state, p in unnorm.items()}
+
+
+# ----------------------------------------------------------------------------
+# v5 — realized returns + bucket-conditional likelihoods.
+# State structure is internal scaffolding only; agents see emissions and forecast
+# over realized-return buckets.
+# ----------------------------------------------------------------------------
+
+
+def realize_return_at_horizon(state: CompanyState, rng: random.Random) -> float:
+    """Draw a realized log return at horizon for the given hidden state.
+
+    Uses the state-conditional N(mean, std) distribution from STATE_RETURN_PARAMS.
+    This is invisible to the agent — only the toy world calls this.
+    """
+    mean, std = STATE_RETURN_PARAMS[state]
+    return rng.gauss(mean, std)
+
+
+def return_to_bucket(realized_log_return: float) -> ReturnBucket:
+    """Map a realized log return to its ReturnBucket label.
+
+    Bucket boundaries are at -5%, 0%, +5%, +10% in log-return space. The lowest
+    bucket extends to -infinity; the highest to +infinity.
+    """
+    for bucket in RETURN_BUCKETS:
+        if realized_log_return < _BUCKET_UPPER_EDGES[bucket]:
+            return bucket
+    return RETURN_BUCKETS[-1]
+
+
+def _p_bucket_given_state(state: CompanyState, bucket: ReturnBucket) -> float:
+    """P(realized return falls in bucket | state). Computed from the state's normal CDF."""
+    mean, std = STATE_RETURN_PARAMS[state]
+    dist = NormalDist(mu=mean, sigma=std)
+    upper = _BUCKET_UPPER_EDGES[bucket]
+    # Find the lower edge: it's the upper edge of the preceding bucket, or -inf
+    # if this is the lowest bucket.
+    idx = RETURN_BUCKETS.index(bucket)
+    if idx == 0:
+        lower_cdf = 0.0
+    else:
+        prev_upper = _BUCKET_UPPER_EDGES[RETURN_BUCKETS[idx - 1]]
+        lower_cdf = dist.cdf(prev_upper)
+    upper_cdf = 1.0 if upper == float("inf") else dist.cdf(upper)
+    return upper_cdf - lower_cdf
+
+
+def _compute_bucket_conditional_emission_likelihoods() -> dict[ReturnBucket, dict[Emission, float]]:
+    """Pre-compute P(emission | bucket), marginalizing over the hidden state.
+
+    Derived once at module import from the toy's structure:
+
+        P(emission | bucket) = sum over states of
+                                 P(emission | state) * P(state | bucket)
+        P(state | bucket)   = P(bucket | state) * P(state) / P(bucket)
+        P(state)            = uniform 1/3 (the toy's state prior)
+
+    The returned dict is exposed as `BUCKET_CONDITIONAL_LIKELIHOODS` for agents
+    that update beliefs over buckets via Bayes.
+    """
+    n_states = len(STATES)
+    p_state = 1.0 / n_states
+
+    # P(state | bucket) via Bayes from P(bucket | state) and uniform P(state)
+    p_bucket = {
+        bucket: sum(_p_bucket_given_state(s, bucket) * p_state for s in STATES)
+        for bucket in RETURN_BUCKETS
+    }
+    p_state_given_bucket: dict[ReturnBucket, dict[CompanyState, float]] = {
+        bucket: {
+            state: _p_bucket_given_state(state, bucket) * p_state / p_bucket[bucket]
+            for state in STATES
+        }
+        for bucket in RETURN_BUCKETS
+    }
+
+    # P(emission | bucket) = sum over states of P(emission | state) * P(state | bucket)
+    return {
+        bucket: {
+            emission: sum(
+                LIKELIHOODS[state][emission] * p_state_given_bucket[bucket][state]
+                for state in STATES
+            )
+            for emission in EMISSIONS
+        }
+        for bucket in RETURN_BUCKETS
+    }
+
+
+# Pre-computed once. Agents read this for Bayes over buckets.
+BUCKET_CONDITIONAL_LIKELIHOODS: dict[ReturnBucket, dict[Emission, float]] = (
+    _compute_bucket_conditional_emission_likelihoods()
+)
+
+
+def bucket_likelihood(emission: Emission, bucket: ReturnBucket) -> float:
+    """P(emission | bucket) — the v5 likelihood the agent uses for Bayes over buckets."""
+    return BUCKET_CONDITIONAL_LIKELIHOODS[bucket][emission]
+
+
+def update_forecast_over_buckets(
+    forecast: ForecastOverBuckets, emission: Emission
+) -> ForecastOverBuckets:
+    """One Bayesian update over realized-return buckets.
+
+    posterior(bucket) ∝ prior(bucket) * P(emission | bucket)
+
+    This is the v5-native cognition update for agents in the toy world. The agent
+    never reasons over states — only over buckets.
+    """
+    unnorm: ForecastOverBuckets = {
+        bucket: forecast[bucket] * bucket_likelihood(emission, bucket) for bucket in forecast
+    }
+    total = sum(unnorm.values())
+    return {bucket: p / total for bucket, p in unnorm.items()}
+
+
+def uniform_forecast_over_buckets() -> ForecastOverBuckets:
+    """A uniform prior over realized-return buckets. Each bucket gets 1/N probability."""
+    return dict.fromkeys(RETURN_BUCKETS, 1.0 / len(RETURN_BUCKETS))
 
 
 def run(hidden: CompanyState, n_emissions: int, seed: int) -> None:

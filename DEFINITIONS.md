@@ -28,6 +28,10 @@ A decision problem where the agent must repeatedly choose between multiple "arms
 
 A probability distribution over hypotheses. Not a guess. Not a point estimate. A weighted distribution that sums to 1. Under v5, the agent's belief at decision time is a **forecast distribution over realized returns** (see `Contract`).
 
+## Calibrated forecast (`F_AI_calibrated`)
+
+The agent's raw forecast distribution `F_AI` after shrinkage toward per-signal-class empirical reliability from the Forecast Ledger. Same shape as `F_AI` (probability distribution over realized return buckets; sums to 1; no zeros — Cromwell holds). Computed by the Tradable-Edge Action Engine at decision time, not by the agent. Stored on the Contract as the `calibrated_forecast` field. Used as the input to calibrated expected utility computation and the margin-of-safety action gate. **The verifier-side calibrated version of the agent's cognition.**
+
 ## Brier score
 
 A proper scoring rule for probabilistic predictions. For each prediction, take the probability the agent assigned to the outcome that actually happened, subtract from 1, and square it. Lower is better. The squaring punishes confidently-wrong predictions disproportionately more than mildly-wrong ones, which is what makes lying about confidence cost more, on average, than honesty.
@@ -65,6 +69,10 @@ EV(action) = sum over outcomes of F(outcome) × V(action, outcome)
 ```
 
 The decision rule is: take the action with the highest EV. EV is only honest when the forecast feeding it is calibrated — an overconfident agent doing EV math on inflated probabilities will systematically over-act. Under v5, the Tradable-Edge Action Engine computes EV under the **calibration-shrunk** forecast, not under the agent's raw forecast.
+
+## Forecast distribution (`F_AI`)
+
+The agent's probability distribution over buckets of `R_realized` for a specific (name, horizon, expression-type). Emitted by the AI Core at decision time alongside a `signal_class_id` tag. Sums to 1; no bucket is assigned 0 (Cromwell). Stored on the Contract as the `forecast_distribution` field. **The cognition-side output of the AI Core under Constitution v5** — replaces the pre-v5 belief distribution over hidden states.
 
 ## Fractional Kelly
 
@@ -147,6 +155,10 @@ A scoring rule with the property that, on average, the way to maximize your scor
 
 The standard deviation of past price returns over a specified window. A statistic computed from past emissions. Used as one of the Market-State Baseline's headline observable inputs.
 
+## Realized return (`R_realized`)
+
+The actual log return for a (name, horizon, expression-type) over the period from decision time to horizon. Revealed at the horizon by the labelling function (which takes future price + corporate actions + payoff structure → realized log return). Not known at decision time. **The grading object for forecasts under Constitution v5** — replaces "hidden state" as the predicted object. The `realized_returns` Postgres table holds one row per resolved (Contract, horizon) pair.
+
 ## Reflexivity
 
 The phenomenon by which the agent's own activity becomes part of the market's information environment — and, in strong forms, part of the world process being forecast. Two flavors:
@@ -167,6 +179,12 @@ Every primitive in the gym sits inside one frame:
 - **Isolated Market-State Baseline** → a parallel control on headline observables, used for incremental-AI-edge attribution.
 
 The unifying form: **forecast the future from the shadows, empirically calibrate the forecast, and act only when the gate clears — then audit what edge came from the AI vs from headline observables anyone has.**
+
+## Signal class
+
+The agent's own categorization tag for "what kind of forecast this is." Stored on the Contract as the `signal_class_id` field. Examples: `mid_cap_tech_margin_surprise_q3`, `commodity_supply_shock_3m_equity_long`, `cfo_qualifier_density_q3_post_2020` (the last has no Wall Street analog — the agent invents categorizations as it discovers them).
+
+**The agent proposes; the Forecast Ledger tracks per-signal-class empirical reliability over many forecasts.** At decision time, the Action Engine looks up reliability for the signal class and shrinks the agent's raw `F_AI` toward the empirical rate — producing `F_AI_calibrated`. Signal classes can be broad (more samples, statistically firm, less discriminating) or narrow (fewer samples, more discriminating; aggressive shrinkage applies). Signal classes are **searchable** (per DESIGN.md "Searchable vs Architectural") — they evolve as the agent discovers what works; the architecture doesn't pre-define them.
 
 ## Source diet
 

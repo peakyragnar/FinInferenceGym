@@ -1,27 +1,27 @@
 """reliability_diagrams.py — Stone 18 visual exit criterion for Phase 0.
 
-Generates an HTML reliability-diagram figure for the three adversarial
-agents (ConfidentAgent, UniformAgent, BayesianAgent). Per-state pooling:
-for each agent and each (episode, tick, state) triple across N episodes,
-records (claim = agent's claimed P(state), outcome = 1 if truth == state
-else 0). Buckets the claims and plots (mean_claim, observed_rate) per
-bucket against the 45° calibration line.
+Generates an HTML reliability-diagram figure for the three adversarial agents
+(ConfidentAgent, UniformAgent, BayesianAgent). Per-bucket pooling: for each
+agent and each (episode, tick, bucket) triple across N episodes, records
+(claim = agent's claimed P(bucket), outcome = 1 if the episode's realized log
+return falls in that bucket, else 0). Buckets the claims and plots
+(mean_claim, observed_rate) per bucket against the 45° calibration line.
 
-Expected visual shapes (PYRAMID.md Stone 18, BUILD.md Phase 0 exit):
+Expected visual shapes (PYRAMID.md Stone 18, BUILD.md Phase 0 exit, updated
+under Phase 1 NEW Cluster A):
 
-  - ConfidentAgent: two clusters. Points at (~0.025, ~0.33) and
-    (~0.95, ~0.34). Both far off the diagonal in opposite directions.
-  - UniformAgent: one point near (0.333, 0.333). On the diagonal but
-    only ONE bucket populated — no discrimination across confidence
-    levels.
-  - BayesianAgent: many buckets populated, points close to the
-    diagonal — discrimination AND calibration.
+  - ConfidentAgent: two clusters. A high-claim point at (~0.95, observed-rate-
+    of-the-confident-bucket-across-episodes) and a low-claim point at
+    (~0.0125, observed-rate-of-the-other-buckets). Both far off the diagonal.
+  - UniformAgent: one point at (0.2, 0.2). On the diagonal but only ONE bucket
+    populated — no discrimination across confidence levels.
+  - BayesianAgent: many buckets populated, points close to the diagonal —
+    discrimination AND calibration.
 
-Under Constitution v5 the pre-v5 "Market" parallel agent was removed
-from this demo (it was a Stone 11a parallel believer used to compute
-the belief-delta gap; the v5 framing isolates the Market-State Baseline
-in its own module — `src/fingym/baseline/` — and the reliability diagrams
-focus on per-agent calibration).
+Under v5 the agent's hypothesis space is realized-return buckets, NOT hidden
+states. The realized bucket per episode is drawn from the state-conditional
+return distribution at horizon and serves as the binary outcome for the
+per-bucket calibration check.
 
 Run: `uv run python -m fingym.toys.reliability_diagrams`
 
@@ -46,8 +46,11 @@ from fingym.toys.adversarial_agents import (
     UniformAgent,
 )
 from fingym.toys.synthetic_market import (
+    RETURN_BUCKETS,
     STATES,
     CompanyState,
+    realize_return_at_horizon,
+    return_to_bucket,
     sample_emission,
 )
 
@@ -55,50 +58,58 @@ if TYPE_CHECKING:
     pass
 
 
-def collect_per_state_predictions(
+def collect_per_bucket_predictions(
     n_episodes: int = 100,
     n_emissions_per_episode: int = 12,
     base_seed: int = 42,
 ) -> dict[str, tuple[list[float], list[int]]]:
-    """Run N episodes; gather per-state (claim, outcome) pairs per agent.
+    """Run N episodes; gather per-bucket (claim, outcome) pairs per agent.
 
-    For each agent and each (episode, tick, state) triple, records:
-      - claim: agent's claimed P(state) at that tick
-      - outcome: 1 if that episode's truth was `state`, else 0
+    For each agent and each (episode, tick, bucket) triple, records:
+      - claim: agent's claimed P(bucket) at that tick
+      - outcome: 1 if the episode's realized return falls in that bucket, else 0
 
-    Per-state pooling gives 3 predictions per agent per tick. Across
-    100 episodes x 12 ticks x 3 states = 3600 predictions per agent.
+    Per-bucket pooling gives N_BUCKETS predictions per agent per tick. Across
+    100 episodes x 12 ticks x 5 buckets = 6000 predictions per agent.
     Deterministic given `base_seed`.
     """
-    truth_rng = random.Random(base_seed)
-    truth_choices: list[CompanyState] = list(STATES)
+    state_rng = random.Random(base_seed)
+    state_choices: list[CompanyState] = list(STATES)
 
     agent_names = [
-        "ConfidentAgent(decaying, p=0.95)",
+        "ConfidentAgent(below_minus_5, p=0.95)",
         "UniformAgent",
         "BayesianAgent",
     ]
     per_agent: dict[str, tuple[list[float], list[int]]] = {name: ([], []) for name in agent_names}
 
     for episode_idx in range(n_episodes):
-        truth = truth_rng.choice(truth_choices)
+        truth_state = state_rng.choice(state_choices)
         episode_seed = base_seed + episode_idx + 1
+        episode_rng = random.Random(episode_seed)
 
-        confident = ConfidentAgent("decaying", confidence=0.95)
+        confident = ConfidentAgent("below_minus_5", confidence=0.95)
         uniform = UniformAgent()
         bayesian = BayesianAgent(DEFAULT_BAYESIAN_PRIOR, name="BayesianAgent")
         all_actors: list[Agent] = [confident, uniform, bayesian]
 
-        rng = random.Random(episode_seed)
-        for _ in range(n_emissions_per_episode):
-            e = sample_emission(truth, rng)
+        # Realize the return for this episode upfront so we know the outcome bucket.
+        # The agents never see it; the rng has already been advanced for the
+        # emission stream below.
+        emissions = [
+            sample_emission(truth_state, episode_rng) for _ in range(n_emissions_per_episode)
+        ]
+        realized_log_return = realize_return_at_horizon(truth_state, episode_rng)
+        realized_bucket = return_to_bucket(realized_log_return)
+
+        for emission in emissions:
             for a in all_actors:
-                a.observe(e)
+                a.observe(emission)
                 claims, outcomes = per_agent[a.name]
-                belief = a.belief
-                for state in STATES:
-                    claims.append(belief[state])
-                    outcomes.append(1 if truth == state else 0)
+                forecast = a.forecast
+                for bucket in RETURN_BUCKETS:
+                    claims.append(forecast[bucket])
+                    outcomes.append(1 if bucket == realized_bucket else 0)
 
     return per_agent
 
@@ -110,7 +121,7 @@ def compute_reliability_data(
     n_buckets: int = 10,
 ) -> dict[str, list[ReliabilityBucket]]:
     """Run predictions + bucketing; return per-agent reliability buckets."""
-    per_agent_preds = collect_per_state_predictions(
+    per_agent_preds = collect_per_bucket_predictions(
         n_episodes=n_episodes,
         n_emissions_per_episode=n_emissions_per_episode,
         base_seed=base_seed,
@@ -130,9 +141,9 @@ def render_reliability_html(
 ) -> Path:
     """Generate the HTML reliability-diagram figure and write to output_path.
 
-    Self-contained HTML (embedded plotly.js). Four panels in a 2x2 grid:
-    one per agent. Each panel has the 45° calibration line and the per-
-    bucket scatter, sized by bucket count, hover-styled with details.
+    Self-contained HTML (embedded plotly.js). Three panels in a row, one per
+    agent. Each panel has the 45° calibration line and the per-claim-bucket
+    scatter, sized by bucket count, hover-styled with details.
     """
     reliability = compute_reliability_data(
         n_episodes=n_episodes,
@@ -142,7 +153,7 @@ def render_reliability_html(
     )
 
     agent_order = [
-        "ConfidentAgent(decaying, p=0.95)",
+        "ConfidentAgent(below_minus_5, p=0.95)",
         "UniformAgent",
         "BayesianAgent",
     ]
@@ -178,7 +189,7 @@ def render_reliability_html(
         observed_rates = [b.observed_rate for b in buckets]
         counts = [b.count for b in buckets]
         hover_text = [
-            f"bucket [{b.lo:.2f}, {b.hi:.2f})<br>"
+            f"claim bucket [{b.lo:.2f}, {b.hi:.2f})<br>"
             f"mean claim: {b.mean_claim:.3f}<br>"
             f"observed rate: {b.observed_rate:.3f}<br>"
             f"count: {b.count}"
@@ -204,17 +215,17 @@ def render_reliability_html(
             col=col,
         )
 
-        fig.update_xaxes(range=[0, 1], title_text="claimed P(state)", row=row, col=col)
+        fig.update_xaxes(range=[0, 1], title_text="claimed P(bucket)", row=row, col=col)
         fig.update_yaxes(range=[0, 1], title_text="observed frequency", row=row, col=col)
 
     fig.update_layout(
         title=(
             f"Reliability Diagrams — Stone 18, Phase 0 Exit Criterion "
-            f"(N={n_episodes} episodes x {n_emissions_per_episode} ticks "
-            f"x 3 states, seed={base_seed})"
+            f"(N={n_episodes} episodes x {n_emissions_per_episode} ticks x "
+            f"{len(RETURN_BUCKETS)} buckets, seed={base_seed})"
         ),
-        height=900,
-        width=1100,
+        height=600,
+        width=1400,
         showlegend=True,
         legend={"x": 0.02, "y": 1.08, "orientation": "h"},
     )

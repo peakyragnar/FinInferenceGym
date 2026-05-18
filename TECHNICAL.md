@@ -226,6 +226,108 @@ llm/       ←   agents/, cli/
 
 The `agents/ ↛ baseline/` and `baseline/ ↛ agents/` rules are the load-bearing v5 isolation: the AI Core consumes the same raw `headline_observables` the Baseline consumes, but it never sees the Baseline's processed forecast.
 
+## Operator Configuration and Observability
+
+Per DESIGN.md "Operator Configuration and Observability" — the architecture commits to operator visibility into every decision and tunability over operational parameters (vs locked architectural commitments). This section spells out the implementation.
+
+### Configuration file layout
+
+Operational parameters live in `config/` as versioned YAML. Every change is a git commit with full audit trail.
+
+```
+config/
+├── cost_models/
+│   ├── equity_large_cap.yaml         # spread, impact k, ADV thresholds, alpha-decay parameters
+│   ├── equity_microcap.yaml
+│   ├── options.yaml
+│   └── pair.yaml
+├── action_engine/
+│   ├── margin_of_safety_weights.yaml # composition: cost + uncertainty + miscalibration + capacity slack
+│   ├── shrinkage_priors.yaml         # prior_strength per asset class / signal class
+│   └── action_gates.yaml             # minimum sample sizes for gate to clear
+├── ledger/
+│   └── refresh_cadence.yaml          # how often the Forecast Ledger reliability view refreshes
+├── promotion_gate/
+│   ├── thresholds.yaml               # held-out improvement minimums, cross-model regression criteria
+│   └── retire_criteria.yaml          # when promoted L3 skills get demoted back to L2 or retired
+├── emissions/
+│   └── materiality_thresholds.yaml   # per category: macro/rates (default 25 bps), CPI surprise (0.2%), commodities (5% daily), FX (3% DXY), credit (25 bps HY), per-sector tuning
+└── kill_switches.yaml                # per-name, per-signal-class, per-agent stop flags (manual operator override)
+```
+
+Each YAML file has a schema validated by a pre-commit hook. The schema enforces that tunable parameters fall within sensible ranges (e.g., `prior_strength > 0`; `minimum_sample_size >= 5`).
+
+### Dashboard endpoints
+
+The dashboard presentation layer reads from the data substrate (scoreboard, Forecast Ledger view, promotion log, Postgres tables) and renders four views:
+
+| View | What it shows |
+|---|---|
+| `dashboard/decisions` | Live + historical decisions, organized by name / signal class / agent / horizon. Per decision: forecast, calibrated forecast, EU, margin-of-safety breakdown (all components), tradable edge score, final action. "Why did this happen" drill-down per decision. |
+| `dashboard/ledger` | Per-signal-class reliability tables with sample sizes. Rolling-window calibration drift indicators. Drill-down: which forecasts contribute to each cell. |
+| `dashboard/promotions` | Skills currently in L2 probationary. Promotion checks passed / failed per skill. Historical promotions, rejections, demotions, retirements. |
+| `dashboard/cost_accuracy` | Per-product type: estimated vs realized costs (from Stone 14's `realized_edge - nominal_edge` decomposition). Drift detection — cost-model parameters might need recalibration. |
+
+Implementation stack TBD when Phase 3 lands; likely FastAPI + a minimal React/Streamlit frontend, served from the same Fly.io/Railway deployment.
+
+### Kill switches
+
+Operator override of the Action Engine, with audit log:
+
+```python
+# Per-name kill switch
+kill_switches.add_name("AAPL", reason="material non-public event suspected", actor="michael")
+
+# Per-signal-class kill switch
+kill_switches.add_signal_class("commodity_supply_shock", reason="regime mismatch detected", actor="michael")
+
+# Per-agent kill switch
+kill_switches.disable_agent("bayes_v1", reason="needs retraining after model upgrade", actor="michael")
+```
+
+Each kill switch action records: timestamp, actor, scope, reason, effective-from / effective-until timestamps. Recorded in Postgres `kill_switch_log` table (append-only).
+
+The Action Engine checks `kill_switches` before emitting a `TradeAction` — if any matching kill switch is active, the action is overridden to `NoAction` with `reason="operator_kill_switch"` on the Contract. The override IS recorded on the Contract for audit; the agent's `recommended_action` is preserved separately so the audit shows what would have happened without the override.
+
+### Mechanism enforcement
+
+| Mechanism | What it enforces |
+|---|---|
+| Pre-commit `config-schema-validate` (custom, queued for Phase 1 NEW Cluster B) | All YAML in `config/` validates against its schema |
+| Pre-commit `no-locked-params-in-config` (custom, queued for Phase 1 NEW Cluster B) | Architectural-locked parameters (e.g., the shrinkage formula structure) never appear in `config/` — prevents accidental relaxation of an architectural commitment |
+| Git commits in `config/` | Audit trail for every operational parameter change |
+| Postgres `kill_switch_log` table | Audit trail for every kill switch invocation |
+| Code-level: `agents/` cannot import from `config/` (only verifier-side modules can) | Cognition is not parameterized by operator settings — keeps cognition / verification boundary clean |
+
+### Phase progression
+
+| Phase | What lands |
+|---|---|
+| Phase 1 NEW Cluster B | The Action Engine reads cost-model config from `config/cost_models/` and margin-of-safety weights from `config/action_engine/`. Tunable parameters live in YAML from day 1. |
+| Phase 1 NEW Cluster G | Promotion gate reads thresholds from `config/promotion_gate/`. |
+| Phase 2 NEW | Real cost-model calibration begins; cost-model config files start receiving updates based on observed execution data. |
+| Phase 3 (live deployment) | Dashboard endpoints + kill switches deployed alongside live operation. Backend live; frontend optional but recommended. |
+| Phase 4 | Promotion-gate dashboard activates as memory artifacts are evaluated against real held-out data. |
+| Phase 5 | Cost-model accuracy dashboard refined with full year-2 retail capacity-adjusted data. |
+
+### What the architecture commits to (and what it doesn't)
+
+**Commits to:**
+- Every operational parameter is in a versioned config file.
+- Every config change is a git commit (audit trail).
+- Every decision is recorded with full provenance in the Contract.
+- The operator can override (kill switches) with an audit log.
+- The architecture distinguishes locked (can't change in operation) from tunable (operator changes via config).
+
+**Does not commit to:**
+- A specific dashboard framework (React, Streamlit, Grafana — any of these would work; chosen in Phase 3)
+- A specific deployment topology for the dashboard (could be co-located with the API or separate)
+- Real-time vs batched dashboard refresh — tunable per view based on what makes sense
+
+The architecture is about the contract between operator, system, and audit trail. The implementation details (UI framework, exact endpoints, refresh cadence) are operational choices that can evolve.
+
+---
+
 ## Deployment path
 
 ### Year 1 (local development)

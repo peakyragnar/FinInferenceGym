@@ -33,6 +33,53 @@ P_new(h) = likelihood(evidence | h) × P_old(h) / Σ_h' [ likelihood(evidence | 
 
 ---
 
+## The atom of forecast (Stone 7b)
+
+The three primitives every v5 decision separates, plus the calibrated derivation.
+
+### `R_realized`
+
+- **What:** the realized log return for the `(name, horizon, expression-type)`.
+- **Type:** real number. Typically in `[-1, +1]` for equities at short-to-medium horizons; unbounded in principle (`-∞` for total loss; large positive for long-horizon multibaggers).
+- **Visibility:** not known at decision time. Revealed at the horizon by the labelling function (future price + corporate actions + payoff structure → realized log return).
+- **Per-horizon:** `R_realized(name, horizon=3m)` and `R_realized(name, horizon=1y)` are distinct objects; scored independently.
+
+### `F_AI(R)`
+
+- **What:** the agent's forecast distribution over `R_realized` for a specific `(name, horizon, expression-type)`.
+- **Type:** function mapping realized-return bucket label → probability in `[0, 1]`. Values sum to exactly `1`.
+- **In code:** `ForecastDistribution` pydantic model in `src/fingym/agents/contract.py`; `probabilities: dict[str, float]` where the key is the bucket label (e.g., `"below_minus_5_pct"`, `"plus_5_to_plus_10_pct"`).
+- **Constraint:** Cromwell — no bucket in the declared support may have probability `0`. The validator (`src/fingym/agents/contract_validator.py`) enforces this at the cognition-side check.
+
+### `Action`
+
+- **What:** the agent's chosen action. Discriminated union over `action_type`.
+- **Type:** `TradeAction(...)` or `NoAction`. Peers, not sub-types.
+- `TradeAction` carries: `expression_type` (equity-long, option-call, ...), `underlying`, `direction`, `size`, `notional`, plus options-specific fields (`strike`, `expiration`, `premium_per_unit`) where applicable.
+- `NoAction` carries: `reason`. Scored under v5 by `tradable_edge_score ≤ 0` (the action-gate verdict).
+- **In code:** typed sum `ActionOrNoAction = Annotated[TradeAction | NoAction, Field(discriminator="action_type")]`.
+
+### `F_AI_calibrated(R)`
+
+- **What:** the agent's raw `F_AI` shrunk toward per-signal-class empirical reliability from the Forecast Ledger.
+- **Type:** same shape as `F_AI` (probability distribution over realized return buckets; sums to 1; no zeros).
+- **Where it lives in code:** populated by the Tradable-Edge Action Engine; stored on the Contract as the `calibrated_forecast` field. `None` at Phase 0 (engine not yet built); required from Phase 1 NEW Cluster B onward.
+- **Formal shrinkage rule:** the specific shrinkage formula (how the raw distribution gets pulled toward empirical reliability as a function of sample size in the Forecast Ledger) lands in Stone 11c when that stone is taught.
+
+### Anchor sentence
+
+> Money lives in the agent's forecast only when its calibrated expected utility (computed under `F_AI_calibrated` and the cost model) clears the margin-of-safety threshold, AND the realized return `R_realized` validates the side the agent took.
+
+Four conditions, all required:
+1. **Discriminating.** `F_AI` is non-trivially shaped (not uniform across buckets).
+2. **Reliable.** The agent has accumulated empirical reliability in the signal class (Forecast Ledger has enough samples that shrinkage isn't pulling the forecast to flat).
+3. **Clears the gate.** Calibrated expected utility under `F_AI_calibrated` (after costs and capacity) exceeds the margin-of-safety threshold (Stone 11d).
+4. **Validated.** Realized `R_realized` lands consistently with the forecast's leaning.
+
+If any link fails, no edge.
+
+---
+
 ## Proper scoring rules (Stones 6 and 7)
 
 The Layer-1 math primitives. Pure functions of `(belief, outcome)`.
@@ -349,7 +396,6 @@ A formula entry must include: the formula or symbol, plain-language description,
 
 ### Upcoming entries (parked, to be filled in as taught during the v5 teaching pass)
 
-- Stone 7b — atom of forecast (realized return as the predicted object; forecast distribution shape)
 - Stone 11b — Forecast Ledger (per-signal-class reliability formula and SQL view definition)
 - Stone 11c — calibration shrinkage (how raw forecast is shrunk toward empirical reliability)
 - Stone 11d — Tradable-Edge Action Engine (calibrated expected utility; Kelly under shrunk distribution; margin-of-safety threshold)
