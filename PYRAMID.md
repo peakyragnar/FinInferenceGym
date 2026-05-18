@@ -94,9 +94,9 @@ The complete plan, by layer. Stones taught and committed are marked **✅**; sto
 
 - Stone 22 ⬜ — corpus QA (validate the existing 10-year / 1700-name transcript corpus before any data flows). **First real-data step in Phase 2 NEW.**
 - Stone 23 ⬜ — the six data types in the canonical schema (emissions, derived_evidence, forecasts, actions, realized_returns, scores) plus headline_observables and the Forecast Ledger view — derived_evidence is mechanical transformation only, never alpha cognition
-- Stone 24 ⬜ — point-in-time discipline in depth (`as_of` vs `as_known`, restatements, look-ahead audits). **Mechanism first exercised in toy mode at Phase 1 NEW Cluster E; on real data here.**
+- Stone 24 ✅ (toy mechanism) — **point-in-time discipline** (`as_of` vs `as_known`, restatements, look-ahead audits). Two timestamps per record; the `time_leak_guard(records, query_tick)` function is the single mechanism. Toy mechanism distilled in Phase 1 NEW Cluster E (full distilled summary in Layer 4 body below). Real-data version is Phase 2 NEW: substitute real vendor `as_known` timestamps into the same plumbing.
 - Stone 25 ⬜ — replay vs live parity (the same pipeline must run both, byte-identical)
-- Stone 26 ⬜ — survivorship bias and the delisted shadow universe. **Real vendor: SEC EDGAR cross-reference for delisted CIKs** (per FMP/Massive smoke-test findings — neither vendor covers pre-2024 delisted names). **Mechanism first exercised in toy mode at Phase 1 NEW Cluster E.**
+- Stone 26 ✅ (toy mechanism) — **survivorship and the delisted shadow universe.** Delisted companies stay in the universe with a well-defined post-delist `realized_return`; the Scoreboard never silently drops them. Toy mechanism distilled in Phase 1 NEW Cluster E (full distilled summary in Layer 4 body below). Real vendor: SEC EDGAR cross-reference for delisted CIKs (FMP/Massive don't cover pre-2024). Phase 2 NEW substitutes real corporate-action feeds.
 - Stone 27 ⬜ — the trajectory store as year-2 SFT fuel (every forecast / action / realized return / score preserved in SFT-fit format). **Schema instantiated in toy mode at Phase 1 NEW; migrated to real v5 Contracts here.**
 - Stone 28 ⬜ — the raw-evidence channel (typed pipe delivering full unprocessed evidence to a model on demand)
 
@@ -889,6 +889,83 @@ A microcap underlying (ADV $500k) at the same $100k notional is 20% of ADV — i
 **What survives:** the single-believer skeleton (`run` function; `World`, `BayesianBeliever`); the likelihood-table physics; `brier`, `log_score`, `reliability_buckets`.
 
 **The v5 refactor — Phase 1 NEW Cluster A deliverable.** The toy emits realized returns at horizon. A single Bayesian believer forecasts the next realized return's distribution, tagged with a signal class. The Forecast Ledger MVP records each (forecast, realized return) pair and computes per-signal-class reliability empirically. The v5 distilled summary with worked tables and concrete numbers lands when Cluster A is taught.
+
+---
+
+## Layer 4 — Real-data discipline (toy-first mechanisms; Phase 1 NEW Cluster E)
+
+> The data-spine stones (22, 23, 25, 27, 28) instantiate against real data in Phase 2 NEW. Stones 24 (PIT discipline) and 26 (survivorship + delistings) are first exercised as toy mechanisms here in Phase 1 NEW Cluster E. Phase 2 NEW substitutes real vendor `as_known` timestamps and real corporate-action feeds into the same plumbing — the guard, the store, and the agent contract don't change.
+
+### Stone 24 — point-in-time discipline (toy mechanism, Constitution v5)
+
+**The setup.** Real markets revise data. The Q1 2026 revenue reported as $100M on 2026-04-15 can become $97M on 2026-07-30 after an audit. An agent forecasting on 2026-05-01 must see only $100M, never $97M. Without point-in-time discipline at the architecture level, vendor revisions silently leak future information into past predictions — and the failure is invisible because the data file says "Q1 revenue $97M" with no timestamp telling you when that number became known.
+
+**Two timestamps per record.** Every emission, derived_evidence, and headline_observable carries:
+
+| Timestamp | What it captures |
+|---|---|
+| `as_of` | the time the data REFERS TO (e.g., the tick of the period being reported) |
+| `as_known` | the time the data became KNOWN to the world (publish tick) |
+
+**The PIT rule.** An agent at decision-time `t` may only see records with `as_known ≤ t`. The `as_of` is unrestricted — an agent at 2027 can reason about Q1 2026 by reading records with `as_of = Q1-2026, as_known ≤ now`.
+
+**Restatements as separate records.** A revision is a NEW record with the same `as_of` but a later `as_known` and a different value. The store keeps the full revision history append-only — closest to how real vendors actually deliver (XBRL revisions, EDGAR amendments). The `time_leak_guard(records, query_tick)` function queries: return all records with `as_known ≤ query_tick`, and for each `as_of` group, pick the latest one.
+
+**Worked restatement table.** A toy emission `(as_of=3, value=strong, as_known=10)` arrives at tick 10. At tick 25, a revision `(as_of=3, value=weak, as_known=25)` is published. The PIT view at four query times:
+
+| Query tick | Records with `as_known ≤ query` | Latest per `as_of=3` |
+|---:|---|---|
+| 5 | (none with as_of=3) | (data not yet published) |
+| 15 | (initial only) | `strong` |
+| 22 | (initial only) | `strong` (revision not yet out) |
+| 30 | (initial + revision) | `weak` (latest known) |
+
+**The non-obvious part.** An agent's forecast at tick 15 must NOT be allowed to peek at the tick-25 revision just because we (the test writers) know it's coming. The guard makes this structurally impossible: it only returns records whose `as_known ≤ query_tick`.
+
+**Three properties to lock in.**
+
+1. **Append-only audit trail.** Restatements never mutate prior records. The store keeps every version with its `as_known`; aggregations are PIT queries against the immutable history.
+2. **Time-leak guard is a single function, not scattered checks.** The guard IS the mechanism. No agent code asks "is this date safe?"; the verifier feeds the agent only what was PIT-visible at the agent's decision time.
+3. **PIT discipline is the same code path for synthetic and real data.** Cluster E exercises this in toy mode; Phase 2 NEW substitutes real records carrying real `as_known` timestamps from vendors. The guard, the store, and the agent contract don't change.
+
+**Connection forward.** Stones 12 and 13 (process quality + decision quality) rely on `as_known` to define "the emission window for this update" — what emissions were known just before this forecast was emitted. Stone 27 (trajectory store as year-2 SFT fuel) is PIT-disciplined by construction so the SFT-fit format is correct for any replay date.
+
+**In code (Cluster E 24-b).** `src/fingym/toys/synthetic_market.py` gets an `Emission` frozen dataclass with `as_of: int`, `as_known: int`, `value: EmissionValue` fields. A `time_leak_guard(emissions, query_tick) -> list[Emission]` function returns the PIT view — filter by `as_known`, dedupe per `as_of` keeping latest. Restatements are added by appending another `Emission` record with the same `as_of` and a later `as_known`. The existing `sample_emission(state, rng)` continues to return raw `EmissionValue` strings for backward compat; new helpers build typed `Emission` records.
+
+**One sentence.** Point-in-time discipline enforces that an agent at decision-time `t` can only see data with `as_known ≤ t`; restatements are stored as separate append-only records with the same `as_of` and a later `as_known`; the `time_leak_guard` function is the single mechanism that returns the PIT view, and the same code path serves toy data here and real vendor data in Phase 2 NEW.
+
+### Stone 26 — survivorship and the delisted shadow universe (toy mechanism, Constitution v5)
+
+**The setup.** Real markets have failures: companies go bankrupt, get acquired, get taken private. A scoring system that only tracks companies *still listed today* has selected for survivors. Every aggregate — mean realized_edge, calibration ECE, even Brier — is biased upward. The agent looks better than it is because the worst outcomes are invisible.
+
+**The delisted shadow universe.** A scoring system must include delisted companies in the training and scoring universe. Their Contracts continue to participate in agent-level aggregations even after the company stops emitting evidence. The post-delist `realized_return` is well-defined: bankruptcy = a deeply negative payoff; acquisition at a known price = a fixed positive payoff; the labelling function makes the call.
+
+**Toy implementation.** Multi-horizon return emission is parameterized with optional `delist_at: int | None` and `delist_payoff: float | None`:
+
+- No emissions are sampled from the company after tick `delist_at`.
+- `realize_returns_at_horizons(state, rng, horizons, delist_at, delist_payoff)` returns `delist_payoff` for any horizon `≥ delist_at` and a normal draw otherwise.
+
+**Worked example.** Agent decides at `t=0` on toy company A. Company A delists at tick 5 with `delist_payoff = -0.90` (a bankruptcy outcome). Multi-horizon scoring at `t=0` under the structured cost from Cluster C (round-trip ~30 bps):
+
+| Horizon | Delist status | Realized return | Realized edge (long, structured cost) |
+|---:|---|---:|---:|
+| 3 | listed | drawn from N(state) | drawn realized return − cost |
+| 6 | delisted (past `t=5`) | **-0.90** | -0.90 − cost = **-90.3%** |
+| 12 | delisted | **-0.90** | **-90.3%** |
+
+If the Scoreboard *silently dropped* the long-horizon Contracts because "company doesn't exist anymore", the agent's mean realized_edge would be inflated by the magnitude of the missing losses — silent survivorship bias. The Stone 14 column structure (NoAction has `realized_edge = 0`; trades have a signed realized_edge) handles delisted trades natively: realized_edge is just a real number, deeply negative when the trade was wrong-side of a delist.
+
+**Three properties to lock in.**
+
+1. **Delisted companies stay in the universe.** Their Contracts are scored at every horizon, including horizons past delist. No silent drops.
+2. **`delist_payoff` is the labelling function's output for post-delist horizons.** In the toy MVP, a single fixed payoff per company. In Phase 2 NEW with real data, the labelling function reads SEC EDGAR corporate-actions for delisted CIKs (per the FMP/Massive smoke-test findings — neither vendor covers pre-2024 delisted names).
+3. **Delistings stress-test the realized_edge column structure.** Stone 14's near-tautological structural check (mean realized_edge at the agent's stated size must be `> 0` across many trades) must include delisted Contracts. Otherwise a strategy that's profitable on survivors but catastrophic on delistings passes the check incorrectly.
+
+**Connection forward.** Stone 27 (trajectory store) preserves delisted-company Contracts in the SFT-fit format — year-2 training must include the failure modes. Stone 40's promotion-gate survivorship check (the fourth of the four-check gate) is the explicit promotion-time defense; the column-level Stone 14 check is the always-on defense.
+
+**In code (Cluster E 26-b).** The toy's `realize_returns_at_horizons` gets keyword-only `delist_at: int | None = None` and `delist_payoff: float | None = None` parameters. When `delist_at` is set, post-delist horizons return `delist_payoff` instead of a normal draw. The integration test asserts (i) post-delist horizons return exactly the configured payoff, (ii) Scoreboard rows for delisted Contracts are preserved (not dropped), (iii) realized_edge for those rows reflects the delist payoff minus structured costs.
+
+**One sentence.** Delisted companies stay in the scoring universe with a well-defined post-delist `realized_return` (the labelling function's call: bankruptcy payoff, acquisition price, etc.); the Scoreboard never silently drops delisted Contracts; the column-level Stone 14 check is the always-on defense against survivorship bias.
 
 ---
 

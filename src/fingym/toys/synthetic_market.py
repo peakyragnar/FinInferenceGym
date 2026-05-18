@@ -29,6 +29,8 @@ Run: `uv run python -m fingym.toys.synthetic_market`
 """
 
 import random
+from collections.abc import Iterable
+from dataclasses import dataclass
 from statistics import NormalDist
 from typing import Literal
 
@@ -173,8 +175,11 @@ def realize_returns_at_horizons(
     state: CompanyState,
     rng: random.Random,
     horizons: tuple[int, ...] = (1,),
+    *,
+    delist_at: int | None = None,
+    delist_payoff: float | None = None,
 ) -> dict[int, float]:
-    """Draw a realized log return for each requested horizon (Stone 10 toy emission).
+    """Draw a realized log return for each requested horizon (Stones 10 + 26).
 
     Each horizon's realized return is an independent draw from the same
     state-conditional N(mean, std) distribution. Independent draws across
@@ -183,8 +188,79 @@ def realize_returns_at_horizons(
     Independent draws still produce the expected Stone 10 behavior: the
     same forecast scored against different realized returns at different
     horizons, with per-horizon `realized_edge` differing by alpha decay.
+
+    Delisting (Stone 26): when `delist_at` is set, any horizon `h >= delist_at`
+    returns the fixed `delist_payoff` (e.g., -0.90 for bankruptcy, +0.25 for
+    a known acquisition price). Horizons `h < delist_at` are drawn normally.
+    The toy MVP uses a single fixed payoff per company; Phase 2 NEW reads
+    real corporate-action feeds for delist outcomes.
     """
-    return {h: realize_return_at_horizon(state, rng) for h in horizons}
+    if delist_at is not None and delist_payoff is None:
+        raise ValueError("delist_at set without delist_payoff")
+    if delist_at is None and delist_payoff is not None:
+        raise ValueError("delist_payoff set without delist_at")
+
+    returns: dict[int, float] = {}
+    for h in horizons:
+        if delist_at is not None and h >= delist_at:
+            assert delist_payoff is not None  # narrowed by the guards above
+            returns[h] = delist_payoff
+        else:
+            returns[h] = realize_return_at_horizon(state, rng)
+    return returns
+
+
+# ----------------------------------------------------------------------------
+# Stone 24 — point-in-time discipline. Records carry as_of (the tick the
+# value refers to) and as_known (the tick the value became known to the
+# world). The time_leak_guard function returns the PIT view: only records
+# with as_known <= query_tick, and for each as_of group, the latest one.
+# ----------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class EmissionRecord:
+    """A toy emission wrapped with PIT metadata (Stone 24).
+
+    Frozen by design — the store is append-only. Restatements are NEW
+    EmissionRecord instances with the same `as_of` but a later `as_known`
+    and a (typically) different value. The full revision history is
+    preserved; `time_leak_guard` materializes the PIT view on demand.
+
+    `value` is the underlying emission alphabet element ("strong" / "mixed"
+    / "weak") that the existing agent.observe(...) flow consumes.
+    """
+
+    as_of: int
+    as_known: int
+    value: Emission
+
+
+def time_leak_guard(records: Iterable[EmissionRecord], query_tick: int) -> list[EmissionRecord]:
+    """PIT view: records with as_known <= query_tick; latest per as_of.
+
+    Given a (possibly large) collection of emission records — including
+    restatements — return the slice an agent at decision-time `query_tick`
+    is allowed to see. The rule:
+
+      1. Drop records with `as_known > query_tick` (the agent cannot peek
+         at the future).
+      2. For each `as_of` value present, keep only the record with the
+         largest `as_known` (the latest revision known by the agent).
+      3. Sort the output by `as_of` for stable, deterministic ordering.
+
+    `time_leak_guard` is the single mechanism — no scattered checks elsewhere
+    in the pipeline. Tests and real-data plumbing both call this function;
+    its behavior is the PIT contract.
+    """
+    latest_by_as_of: dict[int, EmissionRecord] = {}
+    for r in records:
+        if r.as_known > query_tick:
+            continue
+        existing = latest_by_as_of.get(r.as_of)
+        if existing is None or r.as_known > existing.as_known:
+            latest_by_as_of[r.as_of] = r
+    return sorted(latest_by_as_of.values(), key=lambda r: r.as_of)
 
 
 def return_to_bucket(realized_log_return: float) -> ReturnBucket:
