@@ -76,7 +76,7 @@ The complete plan, by layer. Stones taught and committed are marked **✅**; sto
 - Stone 11e ⬜ — **Market-State Baseline (Track C) isolation** (Constitution v5). Separate `src/fingym/baseline/` module reads only headline observables (rates, vol, FX, commodities) and emits its own forecast distribution. Code-level isolation: `agents/` cannot import from `baseline/`. The Baseline's processed forecast is never seen by the AI Core; the audit layer computes `incremental_AI_edge = AI realized edge − Baseline realized edge` as an attribution column. Full summary lands when taught.
 - Stone 12 ✅ — process-quality flag (narrow form). Single mechanical check per update: was there an emission (transcript, filing, fundamental release, news event) with `as_known` in the time window before this update? If yes, `motivated`. If no, `unmotivated` — agent updated with nothing new in the world to react to. Per-agent aggregate `unmotivated_update_rate`; promotion gate caps it (initial value: 10%). Survives Constitution v5 at the concept level; the body summary will be reframed under v5 vocabulary in the upcoming teaching pass.
 - Stone 13 ✅ — decision-quality with `NoAction` as first-class peer. Coherence checks on the agent's action against the inputs (forecast, calibrated expected utility, margin-of-safety threshold, costs). Survives Constitution v5 at the concept level; the v5 reformulation changes the coherence math from "gap > cost" to "tradable_edge_score > 0," and the body summary will be reframed in the upcoming teaching pass.
-- Stone 14 ✅ — capacity-adjusted return. Per-Contract `realized_edge = nominal_edge − spread − commission − market_impact(size, ADV) − alpha_decay`. Square-root law for impact: impact grows with `sqrt(size / ADV)`. Sliced primarily by **deployable size bucket**. Survives Constitution v5 at the concept level; `nominal_edge` source changes from the pre-v5 belief-delta-on-truth to the v5 calibrated expected payoff; body summary will be reframed in the upcoming teaching pass.
+- Stone 14 ✅ — **capacity-adjusted realized return** (Constitution v5). Per-Contract `realized_edge = nominal_payoff − spread − commission − market_impact(size, ADV) − alpha_decay`, where `nominal_payoff = realized_return × direction × notional` (backward-looking — the actual cash P&L before frictions, distinct from Stone 11d's forward-looking `calibrated_expected_utility`). Square-root impact law (`impact ∝ sqrt(size / ADV)`). NoAction Contracts carry `realized_edge = 0`. Sliced primarily by **deployable size bucket**; one near-tautological structural check: mean realized_edge at the agent's stated size must be `> 0` across many trades. Full distilled summary in Layer 2 body below.
 
 ### Layer 3 — Evaluator validated on toys ✅ (Phase 0, substeps 5–8)
 - Stone 15 ✅ — the synthetic-market toy. Lives at `src/fingym/toys/synthetic_market.py` under mypy strict. Built originally in Phase 0 as a 3-state two-believer toy with `belief_delta_on_truth` scoring (pre-v5 framing). The Constitution v5 cleanup pass removed the two-believer setup, the `belief_delta_on_truth` scoring function, and the `STONE_11A_*` prior constants. The single-believer skeleton survives. The v5 single-believer-over-realized-returns refactor and Forecast Ledger MVP are the first deliverable of Phase 1 NEW Cluster A; the v5 distilled summary will replace this entry as Cluster A lands.
@@ -812,13 +812,61 @@ The v5-reframed full distilled summary with worked tables lands when Stone 12 is
 
 `decision_quality_rate` remains a scoreboard column (not a hard cap). The v5-reframed full distilled summary with worked tables and concrete numbers lands when Stone 13 is re-walked in the upcoming v5 teaching pass.
 
-### Stone 14 — capacity-adjusted return — v5 reframing pending teaching
+### Stone 14 — capacity-adjusted realized return (Constitution v5)
 
-**Survives Constitution v5 at the concept level.** Per-Contract `realized_edge = nominal_edge − spread − commission − market_impact(size, ADV) − alpha_decay`, with the square-root impact law (`impact ∝ sqrt(size / ADV)`). Sliced primarily by **deployable size bucket**. Column on the scoreboard, not a hard cap, with one near-tautological structural check: realized edge at the agent's stated size must be `> 0`.
+**The setup.** Stone 11d gates trades on *expected* edge after a single flat round-trip cost (the Cluster B placeholder). The scoreboard needs the *backward-looking* counterpart: per-Contract realized P&L after all frictions actually paid, sliced by deployable size bucket. That's the `realized_edge` column. The flat cost in Cluster B gets replaced here with the structured decomposition.
 
-**What changes under v5.** Pre-v5, `nominal_edge` was the gap (`belief_delta(S_true)`) from Stone 11a, expressed in payoff terms. Under v5, `nominal_edge` is the **calibrated expected payoff** from `F_AI_calibrated` under the action's payoff structure — i.e., the expected value reality would deliver if the agent's calibrated forecast were perfectly correct. Frictions (spread, commission, impact, decay) and the square-root impact law are unchanged.
+**The decomposition.**
 
-The v5-reframed full distilled summary with worked tables on liquid and microcap examples lands when Stone 14 is re-walked in the upcoming v5 teaching pass.
+```
+realized_edge = nominal_payoff − spread − commission − market_impact(size, ADV) − alpha_decay
+nominal_payoff = realized_return × direction × notional
+```
+
+`realized_return` comes from the labelling function at horizon (Stone 2; v5 `RealizedReturnPlan` on the Contract). `direction` is +1 for long, −1 for short. The four friction components live in the structured cost model — same components Stone 11d's Action Engine consumes forward-looking; here they're consumed backward-looking on the actual trade.
+
+| Component | What it captures | Toy MVP | Real-world range |
+|---|---|---:|---|
+| spread | bid-ask cost; half on entry + half on exit | 5 bps | 1–50 bps |
+| commission | explicit broker fees | 1 bp | 0.5–2 bps |
+| market_impact | sqrt-law price impact at deployable size | 50 bps × √(size/ADV) | varies |
+| alpha_decay | edge fades over horizon as the thesis publishes itself | 5 bps/month | 0–50 bps |
+
+**Square-root law — the only non-obvious piece.** Market impact follows `k × sqrt(size / ADV)`, not linear. Why sqrt: book depth empirically follows a sqrt shape under standard microstructure (Kyle 1985; Almgren-Chriss). Small trades sit at the inside spread; large trades walk up the book. Worked numbers with `k = 0.005` (50 bps per √ADV):
+
+| Fraction of ADV | sqrt | Impact (bps) |
+|---:|---:|---:|
+| 0.1% | 0.032 | 1.6 |
+| 1% | 0.10 | 5.0 |
+| 5% | 0.22 | 11.2 |
+| 10% | 0.32 | 15.8 |
+| 25% | 0.50 | 25.0 |
+| 100% | 1.00 | 50.0 |
+
+**Size buckets — why this is a column, not a hard cap.** Same +3% nominal forecast, same direction, different deployment size against TOY (ADV $10M):
+
+| Deployment size | Frac of ADV | Total costs | Realized edge |
+|---|---:|---:|---:|
+| $10k (small) | 0.1% | ~13 bp | **+2.87%** |
+| $100k (medium) | 1% | ~16 bp | **+2.84%** |
+| $1M (large) | 10% | ~27 bp | **+2.73%** |
+| $10M (massive) | 100% | ~61 bp | **+2.39%** |
+
+A microcap underlying (ADV $500k) at the same $100k notional is 20% of ADV — impact ~22 bps, total ~34 bps. Same forecast, very different realized P&L. **The scoreboard reports realized_edge per Contract; aggregations slice by size bucket, signal class, agent. The slice reveals where the agent is profitable and where they shouldn't deploy.**
+
+**NoAction Contracts: `realized_edge = 0` cleanly.** No trade, no costs, no P&L. NoActions still get a scoreboard row with realized_edge populated as 0 — they participate in agent-level aggregations (mean realized_edge per agent treats NoActions as zero-payoff peers of trades; defends BIAS_PATTERNS #12 trade-for-trade's-sake at the scoring layer).
+
+**Three properties to lock in.**
+
+1. **realized_edge is backward-looking; calibrated_expected_utility is forward-looking.** Stone 11d's expected utility is what the agent expected at decision time. Stone 14's realized_edge is what the world actually delivered. The pair forms a calibration audit: an agent with high expected utility but consistently low realized_edge is forecasting badly, not just unlucky.
+2. **The near-tautological structural check: mean realized_edge at the agent's stated deployable size, across many trades, must be > 0.** A negative mean is a friction-eater, not a profitable agent. Column-level threshold, not a hard cap on individual trades — single-trade noise must not gate skill.
+3. **The square-root impact law is the load-bearing piece of the cost structure.** Without it, a strategy looks linearly scalable to any size, and the scoreboard cannot surface capacity ceilings. The sqrt is what makes the deployable-size-bucket slice meaningful — a Kelly-optimal trade at $10k can be a losing trade at $10M.
+
+**Connection forward.** Stone 11d's Action Engine consumes the same structured cost model forward-looking: `calibrated_expected_utility = |E[r_calibrated]| × notional − round_trip_cost_at(notional, horizon_periods)`. The Cluster B flat `round_trip_cost` field gets replaced by a method on the structured model. Stone 11e (Market-State Baseline) compares the AI Core's realized_edge to the Baseline's realized_edge to produce the `incremental_AI_edge` column.
+
+**In code (Cluster C 14-b).** `src/fingym/action/action_engine.py` replaces `ToyCostModel`'s single `round_trip_cost` field with structured fields (`adv`, `spread_bps`, `commission_bps`, `impact_coefficient`, `alpha_decay_bps_per_period`) plus a `round_trip_cost_at(notional, horizon_periods)` method. `src/fingym/evaluator/realized_edge.py` exposes `realized_edge(action, realized_return, cost_model, horizon_periods) -> float` for scoreboard population; returns 0 for NoAction.
+
+**One sentence.** Stone 14's `realized_edge` column is the backward-looking per-Contract P&L — `nominal_payoff` (= realized_return × direction × notional) minus structured frictions (spread, commission, sqrt-law market impact at deployable size, alpha decay) — sliced primarily by size bucket; mean realized_edge at the agent's stated size must be positive in aggregate, with NoAction carrying `realized_edge = 0` as a typed first-class peer of trades.
 
 ---
 

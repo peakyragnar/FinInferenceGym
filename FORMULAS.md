@@ -384,6 +384,78 @@ NoAction { decision_time: datetime, reason: str }
 
 ---
 
+## Capacity-adjusted realized return (Stone 14, Constitution v5)
+
+The scoreboard's backward-looking edge column: what the trade actually netted after frictions actually paid at deployable size. Distinct from Stone 11d's forward-looking `calibrated_expected_utility`.
+
+### The decomposition
+
+```
+realized_edge = nominal_payoff − spread − commission − market_impact − alpha_decay
+```
+
+All terms in fractional units (0.01 = 1%):
+
+| Term | Formula | Source |
+|---|---|---|
+| `nominal_payoff` | `realized_return × direction` | realized_return from labelling function (Stone 2); direction ∈ {+1, −1} from `TradeAction.direction` |
+| `spread` | `spread_bps × 1e-4` | structured cost model field |
+| `commission` | `commission_bps × 1e-4` | structured cost model field |
+| `market_impact` | `impact_coefficient × sqrt(notional / adv)` | sqrt-law (Kyle 1985; Almgren-Chriss) |
+| `alpha_decay` | `alpha_decay_bps_per_period × horizon_periods × 1e-4` | linear in periods held |
+
+### Direction sign
+
+```
+direction = +1   if action.direction == "long"
+direction = −1   if action.direction == "short"
+direction =  0   if NoAction  (-> realized_edge = 0)
+```
+
+### Square-root impact law
+
+```
+market_impact = impact_coefficient × sqrt(notional / adv)
+```
+
+Convex in size: doubling notional multiplies impact by `sqrt(2) ≈ 1.41`, not by 2. Calibration: toy MVP `impact_coefficient = 0.005` (50 bps per √ADV).
+
+### Range and type
+
+- `realized_edge ∈ ℝ`, sign-bearing. Positive = profitable trade after costs; negative = friction-eater or wrong-direction trade.
+- For NoAction Contracts: `realized_edge = 0` exactly (no trade, no costs, no payoff).
+
+### Properties
+
+- **Backward-looking.** Distinct from Stone 11d's `calibrated_expected_utility = |E[r_calibrated]| − round_trip_cost_at(...)`. The pair forms a calibration audit at the agent level.
+- **Convex in size via sqrt-impact.** Total edge can flip sign at large size even when small-size edge is positive.
+- **Sliced primarily by deployable size bucket.** Aggregation `mean(realized_edge | size_bucket)` per agent, per signal class.
+- **Near-tautological structural check:** `mean(realized_edge | size == stated_deployable_size)` across many trades must be `> 0`. Column-level threshold, not per-trade.
+
+### Connection to Stone 11d
+
+Same structured cost model, two directions:
+
+```
+# Stone 11d (forward-looking, decision time)
+round_trip_cost_at(notional, horizon_periods)
+  = spread + commission + impact_coefficient × sqrt(notional/adv)
+  + alpha_decay_bps_per_period × horizon_periods × 1e-4
+
+# Stone 14 (backward-looking, scoreboard time)
+realized_edge = realized_return × direction − round_trip_cost_at(notional, horizon_periods)
+```
+
+Stone 11d gates on `tradable_edge_score = |E[r_calibrated]| − round_trip_cost_at(...) − margin_of_safety_threshold`. Stone 14 measures the same components against the realized return.
+
+### In code
+
+- `src/fingym/evaluator/realized_edge.py` — `realized_edge(action, realized_return, cost_model, horizon_periods) -> float`. Returns 0 for NoAction.
+- `src/fingym/action/action_engine.py` — structured `ToyCostModel(adv, spread_bps, commission_bps, impact_coefficient, alpha_decay_bps_per_period)` with `round_trip_cost_at(notional, horizon_periods)` method.
+- Scoreboard column `realized_edge: float` populated per Contract.
+
+---
+
 ## How this document grows
 
 Each stone that introduces new formal notation adds an entry here, organized by stone number. Cross-references:
@@ -402,7 +474,6 @@ A formula entry must include: the formula or symbol, plain-language description,
 - Stone 11e — Market-State Baseline (Track C) attribution math (incremental AI edge formula)
 - Stone 12 (v5 reframing) — process-quality flag (motivated-update mechanical check)
 - Stone 13 (v5 reframing) — decision quality under the margin-of-safety gate
-- Stone 14 (v5 reframing) — capacity-adjusted return after Forecast-Ledger-calibrated forecast
 - Kelly fraction: `f* = edge / odds_squared` (Stone 33)
 - Fractional Kelly: `f_practical = k · f*` where `k ∈ [0.25, 0.5]` (Stone 33)
 - Asymmetry of ruin: `recover_gain_required = drawdown / (1 − drawdown)` (intuitions.md #12)
