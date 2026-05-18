@@ -80,6 +80,22 @@ _BUCKET_UPPER_EDGES: dict[ReturnBucket, float] = {
     "above_plus_10": float("inf"),
 }
 
+# Representative midpoint for each return bucket, in log-return space. Used
+# by the Action Engine (Stone 11d) to compute the expected return under a
+# forecast distribution as a probability-weighted sum of midpoints. The two
+# open-ended buckets use a midpoint within their plausible range under
+# STATE_RETURN_PARAMS (decaying/strengthening at -0.07 / +0.07 with std 0.04).
+# Phase 2 NEW with real data computes midpoints empirically from the realized
+# returns observed in each bucket; the toy uses fixed midpoints for analytical
+# tractability of the worked examples in PYRAMID Stone 11d.
+RETURN_BUCKET_MIDPOINTS: dict[ReturnBucket, float] = {
+    "below_minus_5": -0.08,
+    "minus_5_to_0": -0.025,
+    "zero_to_plus_5": 0.025,
+    "plus_5_to_plus_10": 0.075,
+    "above_plus_10": 0.12,
+}
+
 
 def sample_emission(state: CompanyState, rng: random.Random) -> Emission:
     """Emit one observation from the given company state.
