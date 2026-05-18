@@ -104,7 +104,7 @@ The complete plan, by layer. Stones taught and committed are marked **✅**; sto
 > Reordered 2026-05-16. Stones 30, 31, 32 are first instantiated in toy mode in Phase 1 NEW (Clusters F, A, B respectively). Stone 29 (pure-code plumbing baseline) is largely absorbed by Phase 1 NEW Cluster F — kept here in case real-data substitution exposes plumbing-only validation needs.
 
 - Stone 29 ⬜ — the pure-code plumbing baseline (hand-coded Bayesian — validates the pipeline, never promoted). Likely absorbed by Phase 1 NEW; revisit at Phase 2 NEW if needed.
-- Stone 30 ⬜ — the first model-driven agent (raw evidence in, structured terminal output out). **First instantiation in toy mode at Phase 1 NEW Cluster F (LLM reads toy emissions and emits v5 Contracts); on real data in Phase 2 NEW.**
+- Stone 30 ✅ (toy instantiation) — **the first model-driven agent.** Raw emission stream in (wrapped as natural-language signals); structured forecast distribution + self-applied `signal_class_id` out via tool-call output. Model swap (DESIGN.md #7): the agent depends on a typed `ForecastClient` Protocol, not on any specific provider SDK. First instantiation distilled in Phase 1 NEW Cluster F using Claude Haiku 4.5 (full distilled summary in Layer 5 body below). On real data in Phase 2 NEW (substitutes real filings / transcripts for toy emissions in the same prompt-and-Protocol path).
 - Stone 33 ⬜ — fractional Kelly sizing (0.25× to 0.5× Kelly for miscalibration absorption). Under v5, Kelly is applied to `F_AI_calibrated` (the calibration-shrunk forecast) inside the Tradable-Edge Action Engine (Stone 11d). Touched in Phase 1 NEW Cluster B.
 
 ### Layer 6 — Live operation + memory ⬜ (Phase 3)
@@ -966,6 +966,71 @@ If the Scoreboard *silently dropped* the long-horizon Contracts because "company
 **In code (Cluster E 26-b).** The toy's `realize_returns_at_horizons` gets keyword-only `delist_at: int | None = None` and `delist_payoff: float | None = None` parameters. When `delist_at` is set, post-delist horizons return `delist_payoff` instead of a normal draw. The integration test asserts (i) post-delist horizons return exactly the configured payoff, (ii) Scoreboard rows for delisted Contracts are preserved (not dropped), (iii) realized_edge for those rows reflects the delist payoff minus structured costs.
 
 **One sentence.** Delisted companies stay in the scoring universe with a well-defined post-delist `realized_return` (the labelling function's call: bankruptcy payoff, acquisition price, etc.); the Scoreboard never silently drops delisted Contracts; the column-level Stone 14 check is the always-on defense against survivorship bias.
+
+---
+
+## Layer 5 — Model-driven agent on raw evidence (toy-first instantiation; Phase 1 NEW Cluster F)
+
+> Stone 30 is first instantiated in toy mode here in Phase 1 NEW Cluster F (LLM reads toy emissions wrapped as natural-language signals). Stones 29 (pure-code Bayesian baseline) and 33 (fractional Kelly) are largely absorbed by earlier clusters; revisit at Phase 2 NEW if real-data substitution exposes plumbing gaps.
+
+### Stone 30 — the first model-driven agent (toy instantiation, Constitution v5)
+
+**The setup.** The cognitive engine for the first time becomes an actual model. A frontier LLM (Claude Haiku 4.5 in the toy MVP) reads the emission stream as natural language and emits the same `(distribution, signal_class_id)` pair the hand-coded agents emitted in Clusters A–E. Downstream — calibrator (Stone 11c) → Action Engine (Stone 11d) → realized_edge (Stone 14) → Scoreboard — is unchanged. The Agent Protocol the LLM agent satisfies is the same one Confident, Uniform, and Bayesian satisfied. **Model swap is a config change, not a code change** (DESIGN.md #7).
+
+**Three architectural commitments locked in by code structure.**
+
+1. **`src/fingym/llm/` is the only place provider SDKs live.** The pre-commit hook `no-direct-llm-sdk-imports` enforces this structurally. Anywhere outside `src/fingym/llm/`, code depends on the typed `ForecastClient` Protocol — never on `anthropic.Anthropic`, `openai.OpenAI`, etc. directly.
+2. **A typed Protocol decouples the agent from any specific provider.** `LlmAgent` consumes a `ForecastClient`; the concrete implementation (Anthropic today, OpenAI / open-weights tomorrow) is injected at construction.
+3. **Tool-call structured output, not free-form text parsing.** The model is REQUIRED to call the `submit_forecast(distribution, signal_class_id, thesis_category)` tool. Output schema is type-safe; schema violations raise at the SDK boundary. Parsing failures are impossible by construction.
+
+**What the model sees.** A generic-analyst system prompt (cached via `cache_control: ephemeral` to amortize the cost over repeated calls in a test session) plus a natural-language wrapping of the emission stream. Example user message:
+
+```
+Signal stream observed so far:
+  Day 1: STRONG fundamental signal
+  Day 2: MIXED fundamental signal
+  Day 3: STRONG fundamental signal
+  ...
+```
+
+The system prompt explains the five return buckets, the `signal_class_id` self-tagging, and forces the `submit_forecast` tool call. **It does NOT tell the model the toy's likelihood table** — that would be cheating (we are testing the verifier under a real-model cognitive layer, not the LLM doing optimal Bayesian inference). The model brings its priors; the verifier scores what comes back.
+
+**What the model emits.**
+
+```
+submit_forecast(
+  distribution = {
+    "below_minus_5":     0.05,
+    "minus_5_to_0":      0.10,
+    "zero_to_plus_5":    0.20,
+    "plus_5_to_plus_10": 0.40,
+    "above_plus_10":     0.25
+  },
+  signal_class_id = "fundamental_uniform_bullish",
+  thesis_category = "Multiple strong fundamental signals; modest tail upside."
+)
+```
+
+The agent caches this response and exposes it through the `Agent` Protocol's `.forecast` property and `.signal_class_id` attribute. The Forecast Ledger keys on whatever the model wrote into `signal_class_id` — the model controls its own categorization, and the verifier tracks reliability per-tag empirically.
+
+**Three properties to lock in.**
+
+1. **The model writes its own `signal_class_id`.** Not the framework, not the operator. The model invents and evolves tags; the Forecast Ledger tracks empirical reliability under whatever tags emerge. Over time, tags with poor reliability get implicit penalties via Stone 11c's calibration shrinkage; tags with good reliability flow through to action time.
+2. **Calibration shrinkage handles new tags gracefully.** When a freshly-instantiated LLM agent uses a `signal_class_id` the Ledger has never seen, `shrink` returns the raw forecast unchanged (the empty-ledger path). Over many runs, the Ledger fills; future forecasts under that tag get shrunk toward empirical reliability. **The LLM never knows the gate saw a different forecast** — the verifier does this in flight.
+3. **The integration tests are network-dependent.** Cluster F tests make real API calls. They auto-skip when `ANTHROPIC_API_KEY` is unset (CI without secrets, devs without keys). Cost: ~$0.02 per full test run with Haiku 4.5.
+
+**Connection forward.** Cluster G (Stones 39, 40) builds the memory + promotion gate on top of the LLM agent: the model proposes candidate memory items (`memory_update_proposal` on the Contract); promoted skills go into L3 and the LLM reads them at session start. Cluster H (Stone 38) runs ≥3 LLM-agent variants in parallel — different model x prompt x memory-subset combinations. Cluster I (Stone 11e) adds the Market-State Baseline as an attribution control.
+
+**In code (Cluster F).**
+
+| File | What it provides |
+|---|---|
+| `src/fingym/llm/contract.py` | `ForecastClient` Protocol + `ForecastResponse` frozen dataclass (distribution, signal_class_id, thesis_category) |
+| `src/fingym/llm/anthropic.py` | `AnthropicClient` — wraps the `anthropic` SDK; tool-call structured output; prompt caching; reads `ANTHROPIC_API_KEY` from env |
+| `src/fingym/toys/llm_agent.py` | `LlmAgent` — satisfies the `Agent` Protocol; lazy LLM call on first `.forecast` access after new observations |
+| `tests/integration/test_cluster_f_pipeline.py` | 5 integration tests (smoke / full-pipeline / forecast-varies-across-streams / forecast-caching / NoAction zero-edge); auto-skip when no API key |
+
+**One sentence.** Stone 30's LLM agent reads the emission stream as natural language, self-tags its forecast with a `signal_class_id` it chooses, and emits a structured forecast distribution via tool-call — all behind a typed `ForecastClient` Protocol so the verification machinery (calibrator → Action Engine → realized_edge → Scoreboard) treats it identically to the hand-coded adversarial agents from Clusters A–E.
 
 ---
 
