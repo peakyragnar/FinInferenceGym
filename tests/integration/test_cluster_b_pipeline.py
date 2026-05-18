@@ -52,7 +52,7 @@ CONFIDENT_SCI = "confident_static"
 UNIFORM_SCI = "uniform_static"
 BAYESIAN_SCI = "bayesian_3state_toy"
 
-INTEGRATION_COST = ToyCostModel(round_trip_cost=0.01)
+INTEGRATION_COST = ToyCostModel.flat(0.01)
 # Threshold above the +2.3% intrinsic long bias from asymmetric bucket midpoints
 # minus 1% cost. Lets the BayesianAgent through on strong-evidence episodes
 # while filtering Uniform and post-shrinkage Confident.

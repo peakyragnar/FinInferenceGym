@@ -48,7 +48,7 @@ def test_strongly_bullish_forecast_trades_long() -> None:
     # E[r] = 0.5 * 0.075 + 0.25 * 0.12 + 0.125 * 0.025 + 0.075 * -0.025 + 0.05 * -0.08
     #      ~= +0.0667 (6.67%). After 1% costs and 1% threshold: tradable_edge_score ~= 4.67%.
     f = _forecast(below=0.05, neg=0.075, zero=0.125, pos=0.5, above=0.25)
-    verdict = decide(f, ToyCostModel(round_trip_cost=0.01))
+    verdict = decide(f, ToyCostModel.flat(0.01))
     assert isinstance(verdict.final_action, TradeAction)
     assert verdict.final_action.direction == "long"
     assert verdict.final_action.expression_type == "equity-long"
@@ -60,7 +60,7 @@ def test_strongly_bullish_forecast_trades_long() -> None:
 def test_strongly_bearish_forecast_trades_short() -> None:
     # Heavy mass on below_minus_5 (-8%). Need |E[r]| > cost + threshold = 0.02.
     f = _forecast(below=0.5, neg=0.3, zero=0.1, pos=0.05, above=0.05)
-    verdict = decide(f, ToyCostModel(round_trip_cost=0.01))
+    verdict = decide(f, ToyCostModel.flat(0.01))
     assert isinstance(verdict.final_action, TradeAction)
     assert verdict.final_action.direction == "short"
     assert verdict.final_action.expression_type == "equity-short"
@@ -70,7 +70,7 @@ def test_strongly_bearish_forecast_trades_short() -> None:
 
 def test_trade_size_is_positive() -> None:
     f = _forecast(below=0.05, neg=0.05, zero=0.10, pos=0.50, above=0.30)
-    verdict = decide(f, ToyCostModel(round_trip_cost=0.005))
+    verdict = decide(f, ToyCostModel.flat(0.005))
     assert isinstance(verdict.final_action, TradeAction)
     assert verdict.final_action.size > 0
     assert verdict.final_action.notional > 0
@@ -80,7 +80,7 @@ def test_kelly_fraction_capped_at_one() -> None:
     # Massive expected return relative to variance -> full_kelly is huge but
     # f_practical must be capped at 1.0.
     f = _forecast(below=0.0, neg=0.0, zero=0.0, pos=0.0, above=1.0)
-    verdict = decide(f, ToyCostModel(round_trip_cost=0.0), threshold=0.0, kelly_fraction=1.0)
+    verdict = decide(f, ToyCostModel.flat(0.0), threshold=0.0, kelly_fraction=1.0)
     assert verdict.kelly_fraction_applied <= 1.0 + 1e-12
 
 
@@ -96,7 +96,7 @@ def test_uniform_forecast_emits_no_action_under_meaningful_threshold() -> None:
     # -8% and +12%; intrinsically asymmetric). The gate filters it correctly
     # at any meaningful threshold above the bias.
     f = _forecast(0.2, 0.2, 0.2, 0.2, 0.2)
-    verdict = decide(f, ToyCostModel(round_trip_cost=0.01), threshold=0.05)
+    verdict = decide(f, ToyCostModel.flat(0.01), threshold=0.05)
     assert isinstance(verdict.final_action, NoAction)
     assert verdict.tradable_edge_score < 0
 
@@ -106,7 +106,7 @@ def test_zero_expected_return_emits_no_action() -> None:
     # with midpoints -0.08 and 0.12... E[r] = -0.04 + 0.06 = +0.02. Not zero. Adjust:
     # For zero: need 0.6 * (-0.08) + 0.4 * 0.12 = -0.048 + 0.048 = 0.0. Good.
     f = _forecast(below=0.6, neg=0.0, zero=0.0, pos=0.0, above=0.4)
-    verdict = decide(f, ToyCostModel(round_trip_cost=0.01))
+    verdict = decide(f, ToyCostModel.flat(0.01))
     assert isinstance(verdict.final_action, NoAction)
     assert verdict.calibrated_expected_return == pytest.approx(0.0, abs=1e-9)
     assert verdict.tradable_edge_score < 0
@@ -114,7 +114,7 @@ def test_zero_expected_return_emits_no_action() -> None:
 
 def test_no_action_records_diagnostic_reason() -> None:
     f = _forecast(0.6, 0.0, 0.0, 0.0, 0.4)
-    verdict = decide(f, ToyCostModel(round_trip_cost=0.01))
+    verdict = decide(f, ToyCostModel.flat(0.01))
     assert isinstance(verdict.final_action, NoAction)
     assert "tradable_edge_score" in verdict.final_action.reason
     assert "calibrated_expected_utility" in verdict.final_action.reason
@@ -127,7 +127,7 @@ def test_edge_below_threshold_emits_no_action() -> None:
     # E[r] = 0.1 * -0.08 + 0.2 * -0.025 + 0.4 * 0.025 + 0.2 * 0.075 + 0.1 * 0.12
     #      = -0.008 - 0.005 + 0.010 + 0.015 + 0.012 = +0.024 (2.4%)
     # After 2% cost: util = 0.4%. With 1% threshold: score = -0.6% -> NoAction.
-    verdict = decide(f, ToyCostModel(round_trip_cost=0.02), threshold=0.01)
+    verdict = decide(f, ToyCostModel.flat(0.02), threshold=0.01)
     assert isinstance(verdict.final_action, NoAction)
 
 
@@ -140,8 +140,8 @@ def test_more_variance_yields_smaller_kelly_fraction() -> None:
     # Same expected return; more variance -> smaller fractional Kelly.
     low_var = _forecast(below=0.0, neg=0.0, zero=0.5, pos=0.5, above=0.0)
     high_var = _forecast(below=0.05, neg=0.05, zero=0.45, pos=0.40, above=0.05)
-    v_low = decide(low_var, ToyCostModel(round_trip_cost=0.0), threshold=0.0)
-    v_high = decide(high_var, ToyCostModel(round_trip_cost=0.0), threshold=0.0)
+    v_low = decide(low_var, ToyCostModel.flat(0.0), threshold=0.0)
+    v_high = decide(high_var, ToyCostModel.flat(0.0), threshold=0.0)
     # Both should trade. The lower-variance one should size larger.
     assert isinstance(v_low.final_action, TradeAction)
     assert isinstance(v_high.final_action, TradeAction)
@@ -155,10 +155,8 @@ def test_higher_expected_return_yields_larger_kelly_fraction() -> None:
     # quarter Kelly).
     small_edge = _forecast(below=0.10, neg=0.20, zero=0.40, pos=0.20, above=0.10)
     big_edge = _forecast(below=0.05, neg=0.05, zero=0.30, pos=0.30, above=0.30)
-    v_small = decide(
-        small_edge, ToyCostModel(round_trip_cost=0.0), threshold=0.0, kelly_fraction=0.01
-    )
-    v_big = decide(big_edge, ToyCostModel(round_trip_cost=0.0), threshold=0.0, kelly_fraction=0.01)
+    v_small = decide(small_edge, ToyCostModel.flat(0.0), threshold=0.0, kelly_fraction=0.01)
+    v_big = decide(big_edge, ToyCostModel.flat(0.0), threshold=0.0, kelly_fraction=0.01)
     assert isinstance(v_small.final_action, TradeAction)
     assert isinstance(v_big.final_action, TradeAction)
     assert v_big.kelly_fraction_applied > v_small.kelly_fraction_applied
@@ -172,7 +170,7 @@ def test_higher_expected_return_yields_larger_kelly_fraction() -> None:
 def test_zero_variance_point_mass_uses_kelly_fraction_directly() -> None:
     # All mass on a single bucket -> variance = 0; engine falls back to kelly_fraction.
     f = _forecast(below=0.0, neg=0.0, zero=0.0, pos=0.0, above=1.0)
-    verdict = decide(f, ToyCostModel(round_trip_cost=0.0), threshold=0.0, kelly_fraction=0.25)
+    verdict = decide(f, ToyCostModel.flat(0.0), threshold=0.0, kelly_fraction=0.25)
     assert isinstance(verdict.final_action, TradeAction)
     assert verdict.kelly_fraction_applied == pytest.approx(0.25)
 
@@ -181,13 +179,13 @@ def test_zero_threshold_trades_on_any_positive_utility() -> None:
     f = _forecast(below=0.0, neg=0.0, zero=0.4, pos=0.4, above=0.2)
     # E[r] = 0.4 * 0.025 + 0.4 * 0.075 + 0.2 * 0.12 = 0.01 + 0.03 + 0.024 = +0.064
     # Cost 0; threshold 0 -> always trades.
-    verdict = decide(f, ToyCostModel(round_trip_cost=0.0), threshold=0.0)
+    verdict = decide(f, ToyCostModel.flat(0.0), threshold=0.0)
     assert isinstance(verdict.final_action, TradeAction)
 
 
 def test_no_action_carries_zero_kelly_fraction_applied() -> None:
     f = _forecast(0.2, 0.2, 0.2, 0.2, 0.2)
-    verdict = decide(f, ToyCostModel(round_trip_cost=0.10), threshold=0.10)
+    verdict = decide(f, ToyCostModel.flat(0.10), threshold=0.10)
     assert isinstance(verdict.final_action, NoAction)
     assert verdict.kelly_fraction_applied == 0.0
 
@@ -195,7 +193,7 @@ def test_no_action_carries_zero_kelly_fraction_applied() -> None:
 def test_verdict_fields_match_contract_verification_fields() -> None:
     """Verdict object exposes exactly the names the Contract expects."""
     f = _forecast(0.05, 0.075, 0.125, 0.50, 0.25)
-    verdict = decide(f, ToyCostModel(round_trip_cost=0.01))
+    verdict = decide(f, ToyCostModel.flat(0.01))
     # These five attributes are what the caller writes onto the Contract.
     assert hasattr(verdict, "calibrated_expected_return")
     assert hasattr(verdict, "calibrated_expected_utility")
@@ -217,7 +215,7 @@ def test_confident_agent_post_shrinkage_emits_no_action() -> None:
     # Approximate post-shrinkage distribution per PYRAMID Stone 11d table:
     # 0.38 on below_minus_5, ~0.155 on each other bucket (renormalized).
     f = _forecast(below=0.38, neg=0.155, zero=0.155, pos=0.155, above=0.155)
-    verdict = decide(f, ToyCostModel(round_trip_cost=0.01), threshold=0.01)
+    verdict = decide(f, ToyCostModel.flat(0.01), threshold=0.01)
     # E[r] = 0.38 * -0.08 + 0.155 * (-0.025 + 0.025 + 0.075 + 0.12)
     #      = -0.0304 + 0.155 * 0.195 = -0.0304 + 0.0302 = ~-0.0002 (basically zero)
     # abs - cost - threshold = 0.0002 - 0.01 - 0.01 = -0.0198 -> NoAction
@@ -230,7 +228,7 @@ def test_uniform_agent_emits_no_action() -> None:
     after costs the engine should emit NoAction at reasonable thresholds.
     """
     f = _forecast(0.2, 0.2, 0.2, 0.2, 0.2)
-    verdict = decide(f, ToyCostModel(round_trip_cost=0.01), threshold=0.02)
+    verdict = decide(f, ToyCostModel.flat(0.01), threshold=0.02)
     # E[r] = 0.2 * (-0.08 - 0.025 + 0.025 + 0.075 + 0.12) = 0.2 * 0.115 = +0.023
     # |E[r]| - cost - threshold = 0.023 - 0.01 - 0.02 = -0.007 -> NoAction
     assert isinstance(verdict.final_action, NoAction)
@@ -243,7 +241,7 @@ def test_bayesian_strong_signal_well_sampled_bin_trades() -> None:
     # E[r] = 0.02 * -0.08 + 0.08 * -0.025 + 0.20 * 0.025 + 0.50 * 0.075 + 0.20 * 0.12
     #      = -0.0016 - 0.002 + 0.005 + 0.0375 + 0.024 = +0.0629 (6.29%)
     # abs - 1% cost - 1% threshold = 4.29% -> trade
-    verdict = decide(f, ToyCostModel(round_trip_cost=0.01), threshold=0.01)
+    verdict = decide(f, ToyCostModel.flat(0.01), threshold=0.01)
     assert isinstance(verdict.final_action, TradeAction)
     assert verdict.final_action.direction == "long"
 
@@ -262,36 +260,134 @@ def test_default_constants_are_sensible() -> None:
 def test_negative_threshold_raises() -> None:
     f = _forecast(0.2, 0.2, 0.2, 0.2, 0.2)
     with pytest.raises(ValueError, match="threshold"):
-        decide(f, ToyCostModel(round_trip_cost=0.01), threshold=-0.01)
+        decide(f, ToyCostModel.flat(0.01), threshold=-0.01)
 
 
 def test_kelly_fraction_outside_unit_interval_raises() -> None:
     f = _forecast(0.2, 0.2, 0.2, 0.2, 0.2)
     with pytest.raises(ValueError, match="kelly_fraction"):
-        decide(f, ToyCostModel(round_trip_cost=0.01), kelly_fraction=0.0)
+        decide(f, ToyCostModel.flat(0.01), kelly_fraction=0.0)
     with pytest.raises(ValueError, match="kelly_fraction"):
-        decide(f, ToyCostModel(round_trip_cost=0.01), kelly_fraction=1.5)
+        decide(f, ToyCostModel.flat(0.01), kelly_fraction=1.5)
     with pytest.raises(ValueError, match="kelly_fraction"):
-        decide(f, ToyCostModel(round_trip_cost=0.01), kelly_fraction=-0.1)
+        decide(f, ToyCostModel.flat(0.01), kelly_fraction=-0.1)
 
 
 def test_non_positive_notional_base_raises() -> None:
     f = _forecast(0.2, 0.2, 0.2, 0.2, 0.2)
     with pytest.raises(ValueError, match="notional_base"):
-        decide(f, ToyCostModel(round_trip_cost=0.01), notional_base=0.0)
+        decide(f, ToyCostModel.flat(0.01), notional_base=0.0)
     with pytest.raises(ValueError, match="notional_base"):
-        decide(f, ToyCostModel(round_trip_cost=0.01), notional_base=-100.0)
+        decide(f, ToyCostModel.flat(0.01), notional_base=-100.0)
 
 
 def test_negative_round_trip_cost_raises() -> None:
     f = _forecast(0.2, 0.2, 0.2, 0.2, 0.2)
     with pytest.raises(ValueError, match="round_trip_cost"):
-        decide(f, ToyCostModel(round_trip_cost=-0.01))
+        decide(f, ToyCostModel.flat(-0.01))
 
 
 def test_verdict_is_frozen_dataclass() -> None:
     """ActionEngineVerdict must be immutable for audit safety."""
     f = _forecast(0.05, 0.05, 0.10, 0.50, 0.30)
-    verdict = decide(f, ToyCostModel(round_trip_cost=0.01))
+    verdict = decide(f, ToyCostModel.flat(0.01))
     with pytest.raises((AttributeError, Exception)):
         verdict.tradable_edge_score = 999.0  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# ToyCostModel structured API (Stone 14)
+# ---------------------------------------------------------------------------
+
+
+def test_flat_cost_model_is_size_independent() -> None:
+    """flat(X) produces a cost model where round_trip_cost_at returns X
+    regardless of notional or horizon."""
+    cost = ToyCostModel.flat(0.01)
+    assert cost.round_trip_cost_at(notional=1.0) == pytest.approx(0.01)
+    assert cost.round_trip_cost_at(notional=1_000_000.0) == pytest.approx(0.01)
+    assert cost.round_trip_cost_at(notional=100_000.0, horizon_periods=5) == pytest.approx(0.01)
+
+
+def test_round_trip_cost_at_combines_components() -> None:
+    """spread + commission + impact + alpha_decay sum cleanly."""
+    cost = ToyCostModel(
+        adv=10_000_000.0,
+        spread_bps=5.0,
+        commission_bps=1.0,
+        impact_coefficient=0.005,
+        alpha_decay_bps_per_period=2.0,
+    )
+    # At notional=100k (1% ADV) over 3 periods:
+    #   spread     = 5 bps = 0.0005
+    #   commission = 1 bp  = 0.0001
+    #   impact     = 0.005 * sqrt(0.01) = 0.0005
+    #   decay      = 2 bps * 3 = 6 bps = 0.0006
+    #   total      = 0.0017
+    total = cost.round_trip_cost_at(notional=100_000.0, horizon_periods=3)
+    assert total == pytest.approx(0.0017, abs=1e-9)
+
+
+def test_round_trip_cost_at_sqrt_law_monotonicity() -> None:
+    """Impact grows sublinearly with notional under the sqrt law."""
+    cost = ToyCostModel(
+        adv=1_000_000.0,
+        spread_bps=0.0,
+        commission_bps=0.0,
+        impact_coefficient=0.005,
+        alpha_decay_bps_per_period=0.0,
+    )
+    c1 = cost.round_trip_cost_at(notional=10_000.0)  # 1% ADV
+    c2 = cost.round_trip_cost_at(notional=40_000.0)  # 4% ADV
+    # Doubling sqrt -> doubling impact: c2 should be ~ 2 * c1
+    assert c2 == pytest.approx(2 * c1, rel=1e-6)
+
+
+def test_round_trip_cost_at_negative_notional_raises() -> None:
+    cost = ToyCostModel.flat(0.01)
+    with pytest.raises(ValueError, match="notional"):
+        cost.round_trip_cost_at(notional=-100.0)
+
+
+def test_round_trip_cost_at_negative_horizon_raises() -> None:
+    cost = ToyCostModel.flat(0.01)
+    with pytest.raises(ValueError, match="horizon_periods"):
+        cost.round_trip_cost_at(notional=1.0, horizon_periods=-1)
+
+
+def test_cost_model_validates_adv_at_construction() -> None:
+    with pytest.raises(ValueError, match="adv"):
+        ToyCostModel(adv=0.0, spread_bps=5.0)
+    with pytest.raises(ValueError, match="adv"):
+        ToyCostModel(adv=-1.0, spread_bps=5.0)
+
+
+def test_cost_model_validates_negative_component_fields() -> None:
+    with pytest.raises(ValueError, match="spread_bps"):
+        ToyCostModel(adv=1.0, spread_bps=-1.0)
+    with pytest.raises(ValueError, match="commission_bps"):
+        ToyCostModel(adv=1.0, commission_bps=-1.0)
+    with pytest.raises(ValueError, match="impact_coefficient"):
+        ToyCostModel(adv=1.0, impact_coefficient=-1.0)
+    with pytest.raises(ValueError, match="alpha_decay_bps_per_period"):
+        ToyCostModel(adv=1.0, alpha_decay_bps_per_period=-1.0)
+
+
+def test_decide_uses_horizon_periods_for_cost() -> None:
+    """Longer horizon -> more alpha decay -> larger round-trip cost ->
+    smaller calibrated_expected_utility. Trade can shift to NoAction at
+    sufficient horizon."""
+    cost = ToyCostModel(
+        adv=1.0,
+        spread_bps=0.0,
+        commission_bps=0.0,
+        impact_coefficient=0.0,
+        alpha_decay_bps_per_period=200.0,  # 200 bps = 2% per period
+    )
+    f = _forecast(below=0.05, neg=0.075, zero=0.125, pos=0.5, above=0.25)
+    one_period = decide(f, cost, threshold=0.0, horizon_periods=1)
+    five_period = decide(f, cost, threshold=0.0, horizon_periods=5)
+    # 1 period: cost ~ 2%; 5 periods: cost ~ 10%. E[r] ~ 6.7% -> trade at 1, NoAction at 5.
+    assert one_period.calibrated_expected_utility > five_period.calibrated_expected_utility
+    assert isinstance(one_period.final_action, TradeAction)
+    assert isinstance(five_period.final_action, NoAction)
