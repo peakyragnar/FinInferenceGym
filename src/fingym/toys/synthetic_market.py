@@ -169,6 +169,24 @@ def realize_return_at_horizon(state: CompanyState, rng: random.Random) -> float:
     return rng.gauss(mean, std)
 
 
+def realize_returns_at_horizons(
+    state: CompanyState,
+    rng: random.Random,
+    horizons: tuple[int, ...] = (1,),
+) -> dict[int, float]:
+    """Draw a realized log return for each requested horizon (Stone 10 toy emission).
+
+    Each horizon's realized return is an independent draw from the same
+    state-conditional N(mean, std) distribution. Independent draws across
+    horizons is the toy MVP's simplification — production would model
+    cumulative-correlation (longer horizon = sum of per-period draws).
+    Independent draws still produce the expected Stone 10 behavior: the
+    same forecast scored against different realized returns at different
+    horizons, with per-horizon `realized_edge` differing by alpha decay.
+    """
+    return {h: realize_return_at_horizon(state, rng) for h in horizons}
+
+
 def return_to_bucket(realized_log_return: float) -> ReturnBucket:
     """Map a realized log return to its ReturnBucket label.
 
