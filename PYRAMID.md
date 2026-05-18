@@ -63,15 +63,15 @@ The complete plan, by layer. Stones taught and committed are marked **✅**; sto
 - Stone 5 ✅ — what makes a scoring rule "proper"
 - Stone 6 ✅ — the Brier score, formula and properties
 - Stone 7 ✅ — the log score, formula and Cromwell
-- Stone 7b ⬜ — **the atom of forecast** (Constitution v5). Realized return as the predicted object; forecast distribution as the prediction; per-signal-class empirical reliability as the calibration property. Replaces the removed Stone 7a (four-thing decomposition). Full distilled summary lands when taught in the v5 teaching pass.
+- Stone 7b ✅ — **the atom of forecast** (Constitution v5). Three primitives: `R_realized` (realized log return at horizon), `F_AI` (agent's forecast distribution over `R_realized`, sums to 1, no zeros), `Action` (TradeAction or NoAction). Plus the verifier-side derivation `F_AI_calibrated` (raw forecast shrunk by per-signal-class empirical reliability from the Forecast Ledger). The agent tags each forecast with a `signal_class_id` — its own categorization, searchable. Anchor: money lives in the agent's forecast only when its calibrated expected utility clears the margin-of-safety threshold AND realized return validates the side. Replaces the removed Stone 7a (four-thing decomposition). Full distilled summary in Layer 1 body below.
 
 ### Layer 2 — The evaluator's math ⬜ (Phase 0, substep 4b/4c)
 - Stone 8 ✅ — calibration curves and reliability diagrams. Measures whether the agent's confidence language matches reality at scale (across many predictions, grouped by claimed confidence). Full summary in Layer 2 body below.
 - Stone 9 ✅ — scoreboard assembly. A table with one row per prediction and one column per scoring metric, plus metadata columns (date, horizon, expression-type, agent_id) for slicing. Kept decomposed by default; collapsed to single numbers only at explicit decision points with declared rules. Full summary in Layer 2 body below.
 - Stone 10 ✅ — multi-horizon scoring (1m / 3m / 6m / 1y in parallel; horizon set is parameterizable, not hardcoded). Same decision time produces one Contract per horizon; each scored independently. The `horizon` column on the scoreboard enables per-horizon slicing for aggregation, per-horizon held-out replay at promotion, and per-horizon domain-of-validity tagging on promoted skills. Full summary in Layer 2 body below.
 - Stone 11 ✅ — expression-type tagging within `TradeAction`. Same forecast can be expressed many ways (equity-long, option-call, option-spread, vol-long, pair, etc.) with different payoff structures. The scoreboard carries `expression_type` as the broad category; specific trade details (strike, expiration, size, premium) live inside the `TradeAction` object on the Contract. Per-expression-type promotion gate. `NoAction` is a typed peer, not folded here. Full summary in Layer 2 body below.
-- Stone 11b ⬜ — **Forecast Ledger** (Constitution v5). Append-only record of every (forecast, realized return) pair indexed by signal class. Per-signal-class empirical reliability computed over many forecasts: "when the agent claims X% in signal class Y, what fraction of those forecasts realized the claimed bucket?" Replaces the removed Stone 11a (market-delta scoring). Full distilled summary lands when taught in the v5 teaching pass.
-- Stone 11c ⬜ — **Calibration shrinkage** (Constitution v5). How the agent's raw forecast `F_AI` is shrunk toward per-signal-class empirical reliability from the Forecast Ledger to produce `F_AI_calibrated`. The shrinkage formula and its properties (shrinkage strength as a function of sample size in the Ledger; behavior under regime change) land when taught.
+- Stone 11b ✅ — **Forecast Ledger** (Constitution v5). Append-only record of every (forecast, realized bucket) pair indexed by signal class. Per-signal-class empirical reliability computed over many forecasts: "when this agent claimed X% confidence on bucket B in signal class Y, what fraction of those claims realized B?" Replaces the removed Stone 11a (market-delta scoring). MVP at `src/fingym/ledger/forecast_ledger.py` (in-memory, append-only); read API `reliability_for_signal_class` returns per-claim-bucket (avg claim, observed rate, count). Real-data version (Phase 2 NEW) is a Postgres view over `forecasts` + `realized_returns` — same read API. Full distilled summary in Layer 2 body below.
+- Stone 11c ✅ — **Calibration shrinkage** (Constitution v5). Rewrites the agent's raw forecast `F_AI` toward per-signal-class empirical reliability from the Forecast Ledger via a sample-size-weighted blend: `shrunk = (n × empirical + k × raw) / (n + k)` where `n` is the Ledger sample size in the matching claim bin and `k` is operator-tunable `prior_strength`. Empty Ledger = identity (raw passes through). Dense Ledger = empirical overwrites raw. Applied bin-by-bin to the 5-bucket forecast, then renormalized. `F_AI_calibrated` is the only thing the action gate sees; raw is preserved for audit. Full distilled summary in Layer 2 body below.
 - Stone 11d ⬜ — **Tradable-Edge Action Engine / margin-of-safety gate** (Constitution v5). Calibrated expected utility under Kelly given `F_AI_calibrated` and the cost model. The signed scalar `tradable_edge_score = calibrated_expected_utility − margin_of_safety_threshold` is the gate verdict: positive → trade; non-positive → NoAction. Full summary lands when taught.
 - Stone 11e ⬜ — **Market-State Baseline (Track C) isolation** (Constitution v5). Separate `src/fingym/baseline/` module reads only headline observables (rates, vol, FX, commodities) and emits its own forecast distribution. Code-level isolation: `agents/` cannot import from `baseline/`. The Baseline's processed forecast is never seen by the AI Core; the audit layer computes `incremental_AI_edge = AI realized edge − Baseline realized edge` as an attribution column. Full summary lands when taught.
 - Stone 12 ✅ — process-quality flag (narrow form). Single mechanical check per update: was there an emission (transcript, filing, fundamental release, news event) with `as_known` in the time window before this update? If yes, `motivated`. If no, `unmotivated` — agent updated with nothing new in the world to react to. Per-agent aggregate `unmotivated_update_rate`; promotion gate caps it (initial value: 10%). Survives Constitution v5 at the concept level; the body summary will be reframed under v5 vocabulary in the upcoming teaching pass.
@@ -314,17 +314,65 @@ Both proper. Both reward `r = q`. Run both — different failure modes surface i
 
 ---
 
-### Stone 7b — the atom of forecast (Constitution v5, pending teaching)
+### Stone 7b — the atom of forecast (Constitution v5)
 
-Replaces the removed Stone 7a (four-thing decomposition). Under v5, the atom of inference one layer up is the **forecast**: a distribution over the realized return at horizon, tagged with a signal class. The agent emits the forecast; the Forecast Ledger records it; the realized return arrives at horizon and is recorded; per-signal-class reliability is computed empirically across many such (forecast, realized return) pairs.
+The atom Layer 2 operates on. Replaces the removed Stone 7a (four-thing decomposition). Under v5 the agent forecasts realized returns directly; no hidden state to categorize; no market belief to recover.
 
-**Three primitives** (replacing the prior four-thing decomposition):
+**Three primitives.**
 
-- **`R_realized`** — the realized return for the `(name, horizon, expression-type)`. Revealed at the horizon.
-- **`F_AI(R)`** — the agent's forecast distribution over `R_realized`. Sums to 1; never assigns 0 to a value in the support (Cromwell).
-- **`Action(A)`** — the chosen action. `TradeAction(...)` or `NoAction`.
+| Symbol | What it is | When known |
+|---|---|---|
+| `R_realized` | The realized log return for the (name, horizon, expression-type). One number — e.g., `+6.4%` log. | Revealed at horizon. Hidden at decision time. |
+| `F_AI(R)` | The agent's forecast distribution over `R_realized`. A small table of (return bucket → probability). Sums to 1. No bucket assigned 0 (Cromwell). | Emitted at decision time. |
+| `Action` | The chosen action. Typed sum: `TradeAction(...)` or `NoAction`. Peers, not sub-types. | Emitted at decision time. |
 
-The full distilled summary — worked tables, concrete numbers, properties under regime change, how the Forecast Ledger groups forecasts into signal classes — lands when Stone 7b is taught in the upcoming v5 teaching pass. The body content above is a TOC-level placeholder per the v5 cleanup pass (2026-05-18) so that PYRAMID is consistent and free of pre-v5 vocabulary while teaching has not yet produced the v5 distilled summary.
+Plus the **verifier-side derivation** (computed by the Action Engine, not the agent):
+
+| Symbol | What it is | When computed |
+|---|---|---|
+| `F_AI_calibrated` | Raw `F_AI` shrunk toward per-signal-class empirical reliability from the Forecast Ledger | At decision time, after the agent emits `F_AI` |
+
+**Signal class — the agent's categorization.** Every forecast is tagged with `signal_class_id` — the agent's own name for what kind of forecast it is. The Forecast Ledger groups forecasts by signal class and tracks empirical reliability per class over many forecasts. Examples: `mid_cap_tech_margin_surprise_q3`, `commodity_supply_shock_3m_equity_long`, `cfo_qualifier_density_q3_post_2020` (the last has no Wall Street analog — the agent invents categorizations as it discovers them). Signal classes are **searchable** under DESIGN.md — the agent proposes; the Ledger tracks; new classes emerge from cognition without architectural change.
+
+**The anchor sentence.**
+
+> Money lives in the agent's forecast only when its calibrated expected utility (computed under `F_AI_calibrated` and the cost model) clears the margin-of-safety threshold, AND the realized return `R_realized` validates the side the agent took.
+
+Four conditions, all required:
+1. **Discriminating.** `F_AI` is non-uniform (not a hedge).
+2. **Reliable.** Signal class has accumulated empirical reliability in the Ledger.
+3. **Clears the gate.** Calibrated expected utility under `F_AI_calibrated` exceeds margin-of-safety after costs (Stone 11d).
+4. **Validated.** `R_realized` falls consistently with the forecast's leaning.
+
+If any link fails, no edge.
+
+**What v5 removed from cognition.**
+
+| Pre-v5 cognition load | v5 status |
+|---|---|
+| Categorize returns into hidden states (`S_true`) | Removed — no state ontology |
+| Recover `P_market(S)` from prices/options/spreads | Removed — no inversion required |
+| Compute `belief_delta = P_AI − P_market` | Removed — no gap math |
+
+The verifier-side machinery (Forecast Ledger, calibration shrinkage, Action Engine, isolated Baseline) replaces these — but lives on the verifier side per DESIGN.md #5. **The agent's cognition load is smaller under v5, not larger.**
+
+**Bridge to Layer 2.** Every Layer 2 stone measures one property of the atom over many forecasts:
+
+| Stone | What it measures (over the atom) |
+|---|---|
+| 8 calibration | Does `F_AI` claim X% match realized rate? |
+| 9 scoreboard | All metrics per Contract; columns; per-signal-class slicing |
+| 10 multi-horizon | Same forecast pipeline at 1m / 3m / 6m / 1y in parallel |
+| 11 expression-type | Same `F_AI` shape, different action expressions |
+| 11b Forecast Ledger | Per-signal-class empirical reliability over many forecasts |
+| 11c calibration shrinkage | How raw `F_AI` becomes `F_AI_calibrated` |
+| 11d action engine | Calibrated expected utility + margin-of-safety gate |
+| 11e Baseline isolation | Parallel control; incremental AI edge attribution |
+| 12 process quality | Emission in window before this forecast? |
+| 13 decision quality | Coherence of action with forecast + calibration + costs |
+| 14 capacity-adjusted return | What of nominal edge survives at deployable size |
+
+**One sentence.** Stone 7b is the atom every v5 measurement is built on — `(F_AI, signal_class_id, Action)` emitted by the agent at decision time, `(R_realized, F_AI_calibrated, final_action_verdict, score)` resolved on the verifier side — and the architecture above this stone is just "what we do with many of these tuples."
 
 ---
 
@@ -568,9 +616,127 @@ Agent's action layer:
 
 **One sentence.** `TradeAction` has sub-types (equity-long, option-call, vol-spread, pair, …); `expression_type` on the scoreboard is the broad category for slicing; specific trade details live inside the `TradeAction` object; per-expression-type promotion gate ensures skills only act in expression contexts where they've been validated; `NoAction` is a typed peer of `TradeAction`, handled by Stone 13.
 
-### Stones 11b, 11c, 11d, 11e — v5 Forecast Ledger / Calibration Shrinkage / Tradable-Edge Action Engine / Market-State Baseline (pending teaching)
+### Stone 11b — the Forecast Ledger (Constitution v5)
 
-Replace the removed Stone 11a (market-delta scoring). Under Constitution v5, calibration is empirical (Forecast Ledger), action gating is on calibrated expected utility clearing a margin-of-safety threshold, and the Market-State Baseline runs in code-level isolation. The full distilled summaries — with worked tables on per-signal-class reliability, calibration shrinkage formulas, the action-gate verdict signed scalar, and the Baseline attribution columns — land when these stones are taught in the upcoming v5 teaching pass. TOC entries with one-line descriptions are above (Layer 2 section).
+**The setup.** When an agent says "I'm 95% sure the realized log return falls in `below_minus_5`," you cannot trust the 95% on its face. The agent might be a confident liar, a careful Bayesian, or a coin-flipper dressed up in confident language. **The 95% means whatever the agent's historical track record at that confidence level means.** The Forecast Ledger is the book that lets you check.
+
+**What the Ledger records.** One row per Contract:
+
+| Column | What it is |
+|---|---|
+| `signal_class_id` | The agent's own tag for this kind of forecast (e.g., `bayesian_3state_toy`, `mid_cap_tech_margin_surprise_q3`). The agent invents and evolves these tags. Searchable, not a fixed ontology. |
+| `forecast` | The agent's full distribution over the realized-return buckets — five probabilities that sum to 1. |
+| `realized_bucket` | The actually-realized bucket at horizon. |
+
+Append-only. Forecasts are snapshotted defensively so caller mutation can never poison history. The Phase 1 NEW MVP is in-memory; the Phase 2 NEW real-data version is a Postgres view over `forecasts` + `realized_returns`. **Same read API in both** — the swap is a backing-store change, not an interface change.
+
+**The read API — `reliability_for_signal_class(signal_class_id)`.** For all rows tagged with this signal class, expand each row into N_BUCKETS `(claim, outcome)` pairs (one per return bucket: claim is the agent's stated probability for that bucket, outcome is 1 iff that bucket realized). Pool those pairs across all rows; bin the claims into equal-width bins on [0, 1]; report per-bin (mean claim, observed rate, count).
+
+This is the standard reliability-bucketing pattern from Stone 8, but **per signal class**.
+
+**Three worked tables from the toy** (100 episodes, 5 return buckets, seed=42, generated by `uv run python -m fingym.toys.ledger_demo`):
+
+**`confident_static`** — ConfidentAgent (always 95% on `below_minus_5`, ignores all evidence):
+
+| claim range | avg claim | observed | count | gap |
+|---|---:|---:|---:|---:|
+| [0.00, 0.10) | 0.013 | 0.182 | 400 | -0.170 |
+| [0.90, 1.00) | 0.950 | 0.270 | 100 | +0.680 |
+
+Reads: *95% claim → 27% truth. Bullshitter caught.*
+
+**`uniform_static`** — UniformAgent (always 0.2 per bucket, never updates):
+
+| claim range | avg claim | observed | count | gap |
+|---|---:|---:|---:|---:|
+| [0.20, 0.30) | 0.200 | 0.200 | 500 | 0.000 |
+
+Reads: *perfectly on the diagonal — but only one row. No varying confidence levels = no discriminating information.*
+
+**`bayesian_3state_toy`** — BayesianAgent (updates on each emission):
+
+| claim range | avg claim | observed | count | gap |
+|---|---:|---:|---:|---:|
+| [0.00, 0.10) | 0.014 | 0.078 | 295 | -0.064 |
+| [0.40, 0.50) | 0.445 | 0.404 | 57 | +0.042 |
+| [0.50, 0.60) | 0.563 | 0.276 | 29 | +0.287 |
+| [0.90, 1.00) | 0.953 | 0.619 | 21 | +0.334 |
+
+Reads: *broad calibration in the bulk; mild overconfidence at the extreme (the conditional-independence flaw — the agent treats correlated emissions as independent evidence). Cluster B's shrinkage corrects this without retraining the agent.*
+
+**Why per-signal-class, not global.** A single agent might be calibrated on `mid_cap_tech_margin_surprise_q3` and miscalibrated on `mega_cap_macro_rate_shock`. Pooling all forecasts globally would average away the structure. Per-signal-class slicing surfaces the structure for action-time calibration. **The agent owns the tag; the verifier owns the bookkeeping; reliability is an empirical property of the `(agent, signal_class)` pair.**
+
+**What the Ledger is NOT.** It does not act. It does not size. It does not shrink the forecast. It records and returns. **Cluster B** (Stones 11c + 11d) is what reads the Ledger at action time and decides what to do with the empirical track record.
+
+**Connection forward.** Stone 11c (calibration shrinkage) reads `reliability_for_signal_class` to shrink a fresh forecast toward the agent's empirical truth-rate before the action gate sees it. Stone 11d (Tradable-Edge Action Engine) gates trade/NoAction on calibrated expected utility, not raw forecast confidence. An agent that systematically claims 95% but is right 25% of the time will see its fresh forecast shrunk to ~25%, fail the action gate, and emit `NoAction`. That is how the Ledger turns the agent's confidence *words* into checkable, money-relevant *numbers*.
+
+**Adversarial verification.** `tests/integration/test_forecast_ledger_cluster_a.py` feeds Confident, Uniform, and Bayesian through the toy + Ledger and asserts each signal class produces a distinguishable reliability signature: ConfidentAgent's high-claim bucket has gap > 0.4 (overconfidence) and low-claim bucket has gap < -0.1 (underconfidence); UniformAgent's single bucket sits within 1e-9 of the diagonal; BayesianAgent's well-sampled buckets (count ≥ 50) sit within 0.15 of the diagonal. Any future change that breaks the discrimination fires the gate.
+
+**In code.** `src/fingym/ledger/forecast_ledger.py` (`ForecastLedger.record`, `.reliability_for_signal_class`, plus audit accessors); `src/fingym/toys/ledger_demo.py` (printed inspection surface — the three tables above are emitted by `uv run python -m fingym.toys.ledger_demo`). Module init at `src/fingym/ledger/__init__.py` documents the import boundary: `agents/`, `action/`, `evaluator/`, `cli/` may read the Ledger; the Ledger must not import from `agents/` or `action/`. The real-data migration in Phase 2 NEW swaps the in-memory backing store for a Postgres view; the read API is unchanged.
+
+**One sentence.** The Forecast Ledger is the append-only book that records every `(forecast, realized bucket)` pair indexed by the agent's self-applied `signal_class_id`; its read API answers "for this signal class, when the agent claimed X% confidence on a bucket, what fraction realized?" — the empirical truth-rate that Cluster B's shrinkage will apply to the agent's raw forecast before the action gate sees it.
+
+### Stone 11c — calibration shrinkage (Constitution v5)
+
+**The question.** The Ledger says: "ConfidentAgent has historically been right ~27% of the time when claiming 95% in this signal class." Today the agent claims 95% again. Should the action gate see **0.95** (the agent's claim) or **0.27** (the Ledger's empirical)? **Neither alone** — take a weighted blend. The weight depends on how much Ledger history you have.
+
+**The intuition.** No history → trust the agent (nothing else to go on). Lots of history → trust the empirical record. In between → blend. **The Ledger sample size is the dial.**
+
+**Worked example — ConfidentAgent's 0.95 raw claim, empirical = 0.27, `prior_strength = 20`:**
+
+| Ledger sample size `n` | raw | empirical | weight on empirical | **shrunk** |
+|---|---:|---:|---:|---:|
+| 0 (new signal class) | 0.95 | — | 0.00 | **0.95** |
+| 5 | 0.95 | 0.27 | 0.20 | **0.81** |
+| 20 | 0.95 | 0.27 | 0.50 | **0.61** |
+| 50 | 0.95 | 0.27 | 0.71 | **0.46** |
+| 100 | 0.95 | 0.27 | 0.83 | **0.38** |
+| 1000 | 0.95 | 0.27 | 0.98 | **0.28** |
+
+Reads: with no Ledger, the gate sees 0.95. With 100 forecasts of history, the gate sees 0.38. With 1000, the gate sees 0.28 — the empirical truth-rate has effectively replaced the agent's claim. The agent never knows the gate saw a different number.
+
+**Applied to the three Cluster A signal classes (after 100 Ledger episodes):**
+
+| Signal class | Raw 0.95 claim becomes... | Why |
+|---|---:|---|
+| `confident_static` | ~0.38 | Empirical 0.27 with `n=100` in [0.9, 1.0); raw crushed toward truth |
+| `uniform_static` | (never claims 0.95) | Raw is always 0.20; nothing to crush |
+| `bayesian_3state_toy` | ~0.78 | Empirical 0.62 with `n=21` in [0.9, 1.0); raw shrunk modestly |
+
+The careful thinker's 0.95 gets nudged a little (mild overconfidence; small sample in this bin). The liar's 0.95 gets crushed to a third of its size. **No retraining of the agent required** — the verifier does this in flight.
+
+**Three properties to lock in:**
+
+1. **Empty Ledger = identity.** New signal class → no entries → shrinkage returns the raw forecast unchanged. The system always works on day 1. (Cost: a brand-new signal class with overconfident claims slips through until the Ledger fills. The Stone 11d margin-of-safety threshold absorbs this — shrinkage alone does not.)
+2. **Sparse Ledger = gentle.** Small `n` → low weight on empirical → mild shrinkage. Reflects appropriate uncertainty about a small-sample empirical estimate.
+3. **Dense Ledger = aggressive.** Large `n` → high weight on empirical → the verifier essentially overwrites the agent's claim with the empirical truth-rate.
+
+**Formula (shorthand for the table above):**
+
+```
+shrunk = (n × empirical + k × raw) / (n + k)
+weight_on_empirical = n / (n + k)
+```
+
+`n` = Ledger sample size in the matching claim bin. `k` = `prior_strength` (pseudo-count weight on the raw claim; operator-tunable, default 20 in the toy MVP). `empirical` = observed truth-rate in that bin. `raw` = agent's current claim. Standard Bayesian shrinkage with pseudo-counts.
+
+**What it operates on — bin-by-bin.** Each of the 5 return-buckets in the agent's forecast is shrunk independently using its matching Ledger claim-bin (the bin whose `[lo, hi)` contains the raw claim). After all 5 are shrunk, renormalize the distribution to sum to 1.
+
+**Why per-bin and not full-distribution.** The Ledger's reliability data is per-claim-bucket, not per-full-forecast. Pooling at the bin level gives statistical power — 100 episodes × 5 buckets = 500 (claim, outcome) pairs per signal class. Full-distribution shrinkage would require orders of magnitude more samples to estimate the agent's joint miscalibration over all 5 buckets simultaneously.
+
+**The `prior_strength` knob.** Architectural choice: shrink toward Ledger empirical. Operator choice: how aggressively. `k = 20` means "treat the agent's raw claim as worth 20 pseudo-observations of history" — the Ledger overtakes the raw claim once it has ~20 entries. `k = 5` would be more aggressive (Ledger overtakes raw faster); `k = 100` would be more conservative (Ledger needs more history before it overtakes raw). Tunable per signal class as the system matures. **This knob belongs in the operator-tunable parameter set (DESIGN.md "Operator Configuration and Observability"), not in the architectural commitments.**
+
+**Known weakness — regime change.** If the agent's track record changes (good in 2023, bad in 2024), the Ledger empirical *lags*. The shrunk forecast will be biased toward the obsolete regime. Mitigations exist — rolling windows, time-decay weighting, signal-class re-tagging on regime detection — but are out of scope for the Cluster B MVP. **Flagged for future stones; not solved here.** A skill that worked under one regime and fails under another will continue to clear the action gate until the Ledger catches up — that latency is real and is part of why the margin-of-safety threshold exists.
+
+**Connection forward (Stone 11d).** `F_AI_calibrated` (the shrunk forecast) is the **only** thing the Tradable-Edge Action Engine sees. The raw forecast is preserved on the Contract for audit; it never multiplies a payoff. ConfidentAgent's 0.95 → 0.38: that 0.38 is what computes calibrated expected utility, which must clear the margin-of-safety threshold for any trade to fire.
+
+**In code (when built — Cluster B).** `src/fingym/action/calibrator.py` will expose `shrink(raw_forecast, signal_class_id, ledger, prior_strength) -> F_AI_calibrated`. Reads `ledger.reliability_for_signal_class`; matches each raw-claim to its Ledger bin; applies the formula above; renormalizes; returns the calibrated distribution. Empty-Ledger and zero-`n` cases return the raw forecast unchanged.
+
+**One sentence.** Calibration shrinkage rewrites the agent's raw claim toward its empirical Ledger track record via a sample-size-weighted blend — empty Ledger passes the claim through unchanged; long miscalibrated history overwrites it with the empirical truth-rate — and the resulting `F_AI_calibrated` is what (and only what) the action gate sees.
+
+### Stones 11d, 11e — Tradable-Edge Action Engine / Market-State Baseline (pending teaching)
+
+Under Constitution v5, action gating is on calibrated expected utility clearing a margin-of-safety threshold, and the Market-State Baseline runs in code-level isolation. Full distilled summaries — the action-gate verdict signed scalar `tradable_edge_score`, the Kelly-equivalent under `F_AI_calibrated`, and the Baseline attribution columns — land when these stones are taught. TOC entries with one-line descriptions are above (Layer 2 section).
 
 ### Stone 12 — process-quality flag (narrow form) — v5 reframing pending teaching
 

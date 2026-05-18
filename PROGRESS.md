@@ -8,7 +8,7 @@ Current build status. Updated at the end of every working session.
 
 **Phase 1 NEW — Toy Architecture Extension (Weeks 3–6) — under Constitution v5**
 
-Status: **paused for Constitution v5 cleanup pass; teaching begins after the cleanup is complete (2026-05-18)** — Phase 0 closed 2026-05-16 with all 8 substeps green, all 4 exit criteria met, and the phase-gate audit passed. Phase 1 NEW was scheduled to open with Cluster A under the pre-v5 framing (market-implied belief recovery in the toy). Constitution v5 reformulated commitment #2 and restructured the Phase 1 NEW cluster sequence under the new framing. See [DECISIONS.md "Constitution tightening v5"](DECISIONS.md) and [CONSTITUTION_V5_PLAN.md](CONSTITUTION_V5_PLAN.md).
+Status: **Cluster A code complete (2026-05-18); Stones 11b + 11c distilled into PYRAMID. Next: Cluster B build — implement `src/fingym/action/calibrator.py` (sub-stone 11c-b), then teach + build Stone 11d.** Phase 0 closed 2026-05-16. Constitution v5 reformulated commitment #2 and restructured the Phase 1 NEW cluster sequence (see [DECISIONS.md "Constitution tightening v5"](DECISIONS.md) and [CONSTITUTION_V5_PLAN.md](CONSTITUTION_V5_PLAN.md)). Phase 1 NEW Cluster A (single-believer toy refactor + Forecast Ledger MVP) shipped 2026-05-18: in-memory `ForecastLedger` at `src/fingym/ledger/forecast_ledger.py`, 11 unit tests, 7 end-to-end integration tests, printed inspection surface at `src/fingym/toys/ledger_demo.py`. All 105 tests green; mypy strict clean across 36 source files; pre-commit 15 hooks clean.
 
 The original BUILD.md plan had Phase 1 = data spine + real-data ingest. That sequencing was reordered (v4, see [DECISIONS.md](DECISIONS.md) "Constitution tightening v4: Phase 1 reorder") and then reformulated (v5). Phase 1 NEW extends the synthetic_market toy *upward through the full architecture* before any real data is ingested. Each architectural piece — Forecast Ledger MVP, calibration shrinkage, Tradable-Edge Action Engine, cost models, multi-horizon scoring, PIT discipline + restatements + delisted analogs, LLM-driven agent, memory + promotion gate, population mechanic, Market-State Baseline isolation — gets built and validated against the toy world FIRST. Real data substitutes into the toy-trained architecture in Phase 2 NEW, one data type at a time.
 
@@ -22,7 +22,7 @@ See [BUILD.md Phase 1](BUILD.md#phase-1--toy-architecture-extension-weeks-36) fo
 
 | Cluster | Architecture piece (in toy mode) | PYRAMID stones touched | Status |
 |---|---|---|---|
-| **A** | Single-believer toy refactor + Forecast Ledger MVP — toy emits realized returns; agent forecasts a distribution; Ledger records each (forecast, realized return) pair indexed by signal class and computes per-signal-class reliability | Stones 7b, 11b | ⬜ |
+| **A** | Single-believer toy refactor + Forecast Ledger MVP — toy emits realized returns; agent forecasts a distribution; Ledger records each (forecast, realized return) pair indexed by signal class and computes per-signal-class reliability | Stones 7b, 11b | ✅ (2026-05-18) |
 | **B** | Calibration shrinkage + Tradable-Edge Action Engine — per-signal-class reliability shrinks the raw forecast; Action Engine computes calibrated expected utility under Kelly and gates on margin-of-safety threshold | Stones 11c, 11d | ⬜ |
 | **C** | Cost models + capacity — per-name liquidity + spread + impact + alpha decay; Stone 14 realized-edge column | Stone 14 (code) | ⬜ |
 | **D** | Multi-horizon scoring — toy emits realized returns at multiple tick horizons; one Contract scored at all | Stone 10 (code) | ⬜ |
@@ -50,17 +50,25 @@ Phase 1 NEW exits when the full architecture has been exercised end-to-end in to
 
 ## Next Action
 
-Next: **complete the Constitution v5 cleanup pass** (in progress as of 2026-05-18), then **begin teaching from Stone 1 forward under v5 framing**. Stones 1–7 (excluding the removed 7a), 8–11 (excluding the removed 11a), and 16–21 are unchanged from Phase 0 and get quick confirms during the teaching pass; new stones 7b (atom of forecast), 11b (Forecast Ledger), 11c (calibration shrinkage), 11d (Tradable-Edge Action Engine / margin of safety), 11e (Market-State Baseline) require full teach-in-chat with worked tables. After each new stone lands in teaching and is distilled into PYRAMID, the corresponding code is built stone-by-stone (Phase 1 NEW Cluster sequence).
+Next: **Phase 1 NEW Cluster B — Stones 11c (calibration shrinkage) + 11d (Tradable-Edge Action Engine).** Teach 11c with worked tables first, distill into PYRAMID, then build the `src/fingym/action/` module + verify against the existing Cluster A Ledger.
 
-Sub-stones for Cluster A under v5 (drafted; refined during teach-in-chat):
+Draft sub-stones for Cluster B (refined during teach-in-chat):
 
-- **7b** — Concept: realized return as the predicted object. No hidden-state categorization; the toy emits an outcome at horizon and the agent forecasts a distribution over it. Worked example with concrete numbers.
-- **11b-a** — Concept: per-signal-class empirical reliability. Worked table showing how many forecasts → claimed-vs-realized truth rate per signal class.
-- **11b-b** — Implement the single-believer toy: world emits realized returns; agent forecasts a distribution; agent tags forecasts with a `signal_class_id`.
-- **11b-c** — Implement the Forecast Ledger MVP: each (forecast, realized return) pair recorded; per-signal-class reliability computed empirically; queryable by signal class.
-- **11b-d** — Verify with adversarial agents: confidently-wrong / well-calibrated / always-uniform agents show distinct reliability signatures per signal class.
+- **11c-a** ✅ (2026-05-18) — Concept: per-signal-class empirical reliability (from the Ledger) is what the verifier trusts; the agent's raw forecast is what the agent stated. Calibration shrinkage takes the raw forecast and pulls it toward the empirical truth-rate per signal class via `shrunk = (n × empirical + k × raw) / (n + k)`. Shrinkage strength scales with Ledger sample size. Distilled into PYRAMID Stone 11c with three worked tables (sample-size ladder, three-agent application, properties).
+- **11c-b** — Implement `src/fingym/action/calibrator.py`: `shrink(raw_forecast, signal_class_id, ledger, prior_strength)` reads `reliability_for_signal_class` and returns `F_AI_calibrated`. Behavior under empty Ledger (return raw forecast); behavior under sparse Ledger (mild shrinkage); behavior under dense Ledger (strong shrinkage toward empirical).
+- **11d-a** — Concept: calibrated expected utility under Kelly using `F_AI_calibrated` + cost model. `tradable_edge_score = calibrated_expected_utility − margin_of_safety_threshold`. Positive → trade; non-positive → NoAction. Worked tables on the three adversarial agents.
+- **11d-b** — Implement `src/fingym/action/action_engine.py`: reads `F_AI_calibrated` + a simple toy cost model + the threshold; returns `TradeAction` or `NoAction`. Populates `final_action`, `calibrated_expected_utility`, `tradable_edge_score` on the Contract.
+- **11d-c** — Verify with adversarial agents: ConfidentAgent → almost always NoAction (raw 95% shrunk to ~27% fails the gate); UniformAgent → always NoAction (no edge); BayesianAgent → trades on the well-sampled, well-calibrated middle of its forecast space, NoAction at the noisy extremes.
 
 **No vendor decisions needed for Phase 1 NEW.** Vendor / corpus / SEC EDGAR / FMP-vs-Massive choices defer to Phase 2 NEW. The toy extension runs entirely on synthetic data; the Anthropic API key (Cluster F) is the only external integration during Phase 1 NEW.
+
+### Cluster A (✅ 2026-05-18) — what shipped
+
+- Single-believer toy refactor: agents emit forecasts over realized-return BUCKETS via bucket-conditional emission likelihoods (no hidden-state cognition by the agent). [src/fingym/toys/synthetic_market.py](src/fingym/toys/synthetic_market.py), [src/fingym/toys/adversarial_agents.py](src/fingym/toys/adversarial_agents.py).
+- Forecast Ledger MVP: in-memory append-only `ForecastLedger`; read API `reliability_for_signal_class` returns per-claim-bucket reliability data. [src/fingym/ledger/forecast_ledger.py](src/fingym/ledger/forecast_ledger.py).
+- 11 unit tests at [tests/unit/test_forecast_ledger.py](tests/unit/test_forecast_ledger.py); 7 end-to-end integration tests at [tests/integration/test_forecast_ledger_cluster_a.py](tests/integration/test_forecast_ledger_cluster_a.py).
+- Printed inspection surface: `uv run python -m fingym.toys.ledger_demo` prints the three signal-class reliability tables. [src/fingym/toys/ledger_demo.py](src/fingym/toys/ledger_demo.py).
+- Stone 11b distilled into PYRAMID Layer 2 body.
 
 ---
 
