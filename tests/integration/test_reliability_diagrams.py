@@ -24,7 +24,6 @@ from fingym.toys.reliability_diagrams import compute_reliability_data
 CONFIDENT = "ConfidentAgent(decaying, p=0.95)"
 UNIFORM = "UniformAgent"
 BAYESIAN = "BayesianAgent"
-MARKET = "Market"
 
 
 @pytest.fixture(scope="module")
@@ -102,16 +101,8 @@ def test_bayesian_agent_has_discrimination_and_calibration(
         )
 
 
-def test_market_shows_discrimination_and_calibration(
-    reliability: dict[str, list[ReliabilityBucket]],
-) -> None:
-    """Market is a BayesianAgent with the Stone 11a market prior; same
-    properties as BayesianAgent — multi-bucket discrimination, calibrated.
-    """
-    buckets = reliability[MARKET]
-    assert len(buckets) >= 3
-    for b in buckets:
-        if b.count < 50:
-            continue
-        gap = abs(b.mean_claim - b.observed_rate)
-        assert gap < 0.15, f"Market bucket [{b.lo:.2f}, {b.hi:.2f}) has gap {gap:.3f}"
+# The pre-v5 `test_market_shows_discrimination_and_calibration` test was
+# removed by the Constitution v5 cleanup pass alongside the Market-as-second-
+# Bayesian-believer setup. Under v5 the Market-State Baseline is an isolated
+# control (`src/fingym/baseline/`) with its own reliability tracking; the
+# integration test for that lands when Stone 11e is taught.

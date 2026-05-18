@@ -1,10 +1,10 @@
 """Unit tests for the Contract pydantic model.
 
-Stone 19 / CONTRACT.md. Covers constructing valid Contracts of various
+Stone 19 / CONTRACT.md (v5). Covers constructing valid Contracts of various
 shapes and confirming that pydantic enforces basic structural constraints
 (required fields, type bounds, the TradeAction/NoAction discriminated union).
 
-Semantic validation (belief sums to 1, falsifiers non-empty, etc.) is
+Semantic validation (forecast sums to 1, falsifiers non-empty, etc.) is
 tested separately in test_contract_validator.py — that's a different layer.
 """
 
@@ -18,15 +18,12 @@ import pytest
 from pydantic import ValidationError
 
 from fingym.agents.contract import (
-    BeliefDelta,
-    BeliefDistribution,
     CognitiveStep,
     Contract,
     Falsifier,
-    HiddenStateHypothesis,
-    LabelPlan,
-    MarketBeliefEstimate,
+    ForecastDistribution,
     NoAction,
+    RealizedReturnPlan,
     TradeAction,
 )
 
@@ -40,32 +37,29 @@ def _valid_kwargs(**overrides: Any) -> dict[str, Any]:
         "model_id": "test_model_v1",
         "prompt_version": "v1",
         "evidence_ids": [],
-        "hidden_state_hypotheses": [
-            HiddenStateHypothesis(label="strg"),
-            HiddenStateHypothesis(label="stbl"),
-            HiddenStateHypothesis(label="dec"),
-        ],
-        "ai_belief": BeliefDistribution(probabilities={"strg": 0.5, "stbl": 0.3, "dec": 0.2}),
-        "market_implied_belief": None,
-        "belief_delta": None,
+        "data_sources_used": ["toy"],
+        "forecast_distribution": ForecastDistribution(
+            probabilities={"up": 0.5, "flat": 0.3, "down": 0.2}
+        ),
+        "signal_class_id": "toy_3bucket",
+        "thesis_category": "test",
         "horizon": "12_ticks",
-        "action_or_no_action": NoAction(reason="test no action"),
+        "recommended_action": NoAction(reason="test no action"),
         "recommended_size": 0.0,
         "falsifiers": [Falsifier(description="test falsifier")],
-        "label_plan": LabelPlan(
+        "realized_return_plan": RealizedReturnPlan(
             horizon="12_ticks",
-            label_source="toy_ground_truth",
-            labelling_function="identity",
+            labelling_function="toy_realized_state_at_horizon",
         ),
         "cognitive_audit_trail": [
             CognitiveStep(
                 step_index=0,
-                initial_belief=BeliefDistribution(
-                    probabilities={"strg": 0.33, "stbl": 0.33, "dec": 0.34}
+                initial_forecast=ForecastDistribution(
+                    probabilities={"up": 0.33, "flat": 0.33, "down": 0.34}
                 ),
                 additional_reasoning="initial",
-                updated_belief=BeliefDistribution(
-                    probabilities={"strg": 0.5, "stbl": 0.3, "dec": 0.2}
+                updated_forecast=ForecastDistribution(
+                    probabilities={"up": 0.5, "flat": 0.3, "down": 0.2}
                 ),
                 action_changed=False,
             )
@@ -79,7 +73,7 @@ def _valid_kwargs(**overrides: Any) -> dict[str, Any]:
 def test_contract_constructs_with_no_action() -> None:
     """A Contract with NoAction constructs cleanly."""
     contract = Contract(**_valid_kwargs())
-    assert isinstance(contract.action_or_no_action, NoAction)
+    assert isinstance(contract.recommended_action, NoAction)
     assert contract.recommended_size == 0.0
 
 
@@ -87,7 +81,7 @@ def test_contract_constructs_with_trade_action() -> None:
     """A Contract with a TradeAction constructs cleanly."""
     contract = Contract(
         **_valid_kwargs(
-            action_or_no_action=TradeAction(
+            recommended_action=TradeAction(
                 expression_type="equity-long",
                 underlying="AAPL",
                 direction="long",
@@ -97,23 +91,17 @@ def test_contract_constructs_with_trade_action() -> None:
             recommended_size=0.05,
         )
     )
-    assert isinstance(contract.action_or_no_action, TradeAction)
-    assert contract.action_or_no_action.underlying == "AAPL"
-    assert contract.action_or_no_action.expression_type == "equity-long"
+    assert isinstance(contract.recommended_action, TradeAction)
+    assert contract.recommended_action.underlying == "AAPL"
+    assert contract.recommended_action.expression_type == "equity-long"
 
 
-def test_contract_with_market_belief_and_delta() -> None:
-    """A Contract with market_implied_belief and belief_delta populated."""
-    contract = Contract(
-        **_valid_kwargs(
-            market_implied_belief=MarketBeliefEstimate(
-                probabilities={"strg": 0.3, "stbl": 0.3, "dec": 0.4}
-            ),
-            belief_delta=BeliefDelta(gaps={"strg": 0.2, "stbl": 0.0, "dec": -0.2}),
-        )
-    )
-    assert contract.market_implied_belief is not None
-    assert contract.belief_delta is not None
+def test_contract_verification_fields_default_to_none() -> None:
+    """v5 verification fields are None at Phase 0 (engine not yet built)."""
+    contract = Contract(**_valid_kwargs())
+    assert contract.calibrated_forecast is None
+    assert contract.tradable_edge_score is None
+    assert contract.final_action is None
 
 
 def test_negative_recommended_size_rejected() -> None:
@@ -164,7 +152,7 @@ def test_discriminated_union_serializes_round_trip() -> None:
     """
     contract = Contract(
         **_valid_kwargs(
-            action_or_no_action=TradeAction(
+            recommended_action=TradeAction(
                 expression_type="option-call",
                 underlying="MSFT",
                 direction="long",
@@ -177,6 +165,6 @@ def test_discriminated_union_serializes_round_trip() -> None:
     )
     as_json = contract.model_dump_json()
     rehydrated = Contract.model_validate_json(as_json)
-    assert isinstance(rehydrated.action_or_no_action, TradeAction)
-    assert rehydrated.action_or_no_action.expression_type == "option-call"
-    assert rehydrated.action_or_no_action.strike == 420.0
+    assert isinstance(rehydrated.recommended_action, TradeAction)
+    assert rehydrated.recommended_action.expression_type == "option-call"
+    assert rehydrated.recommended_action.strike == 420.0

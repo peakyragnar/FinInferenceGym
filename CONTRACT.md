@@ -2,11 +2,11 @@
 
 ## TL;DR
 
-Every cognitive output the system takes seriously must take the shape of a typed `Contract` object. The `Contract` is the bridge from unconstrained model cognition to a scoreable, market-relative, time-separated claim. **A model output that does not land in a `Contract` is prose, not alpha.**
+Every cognitive output the system takes seriously must take the shape of a typed `Contract` object. The `Contract` is the bridge from unconstrained model cognition to a scoreable, time-separated, calibration-ready claim. **A model output that does not land in a `Contract` is prose, not alpha.**
 
-This document is the MVP spec for the `Contract`. Required fields are buildable at Phase 0 (substep 6). Deferred fields arrive as the underlying machinery ships (cost models in Phase 2, capacity in Phase 5, etc.). Pattern matches [memory-design.md](memory-design.md): lean MVP now, deferral list with explicit triggers.
+This document is the MVP spec for the `Contract` under Constitution v5. Agent-emitted fields are buildable at Phase 0 (substep 6 — already shipped) plus Phase 1 NEW Cluster F (LLM agent emits v5 Contracts). Engine-computed fields (calibration, action gate) are populated by the Tradable-Edge Action Engine in Phase 1 NEW Cluster B. Deferred fields arrive as the underlying machinery ships. Pattern matches [memory-design.md](memory-design.md): lean MVP now, deferral list with explicit triggers.
 
-A `Contract` whose `action_or_no_action` field is `NoAction` is informally called a `NoEdgeContract`. It carries the same required fields and is scored the same way — declining to trade is itself a typed claim under audit.
+A `Contract` whose final `action` field is `NoAction` is informally called a `NoEdgeContract`. It carries the same required fields and is scored the same way — declining to trade is itself a typed claim under audit.
 
 ---
 
@@ -14,12 +14,12 @@ A `Contract` whose `action_or_no_action` field is `NoAction` is informally calle
 
 This document is the source of truth for the structured terminal output. It complements:
 
-- **[DESIGN.md](DESIGN.md)** — commitments #5 (cognition/verification boundary) and #6 (raw evidence in, structured output out), plus the four-thing decomposition (`S_true`, `P_AI(S)`, `P_market(S)`, `Action(A)`)
-- **[TECHNICAL.md](TECHNICAL.md)** — the model interface stack (`src/fingym/agents/interface.py`) that types the contract
-- **[BUILD.md](BUILD.md)** — Phase 0 substep 6 (the contract Protocol), Phase 2 (the first model-driven agent that emits real contracts)
-- **[memory-design.md](memory-design.md)** — the `memory_update_proposal` field in a `Contract` is the L2 proposal that feeds the promotion gate
-- **[PYRAMID.md](PYRAMID.md)** — Stones 19 (model interface contract), 11a (market-delta scoring), Layer 5 (Phase 2 mechanisms that produce the contract's market-implied fields)
-- **[DEFINITIONS.md](DEFINITIONS.md)** — formal definitions of `Contract`, `NoEdgeContract`, `P_AI(S)`, `P_market(S)`, `S_true`, `Edge`
+- **[DESIGN.md](DESIGN.md)** — commitments #2 (forecast distribution over realized returns, calibrated empirically), #5 (cognition/verification boundary), #6 (raw evidence in, structured output out), plus the three primitives + audit layer
+- **[TECHNICAL.md](TECHNICAL.md)** — the model interface stack (`src/fingym/agents/interface.py`) that types the Contract, plus the `src/fingym/ledger/`, `src/fingym/action/`, `src/fingym/baseline/` v5 component modules
+- **[BUILD.md](BUILD.md)** — Phase 0 substep 6 (the Contract Protocol), Phase 1 NEW Cluster B (Tradable-Edge Action Engine populates engine-computed fields), Cluster F (first LLM agent emits real v5 Contracts)
+- **[memory-design.md](memory-design.md)** — the `memory_update_proposal` field is the L2 proposal that feeds the promotion gate
+- **[PYRAMID.md](PYRAMID.md)** — Stones 19 (model interface contract), 7b (atom of forecast), 11b–11e (Forecast Ledger, calibration shrinkage, action gate, Baseline)
+- **[DEFINITIONS.md](DEFINITIONS.md)** — formal definitions of `Contract`, `NoEdgeContract`, `R_realized`, `F_AI`, `F_AI_calibrated`, `Action`
 
 ---
 
@@ -27,126 +27,156 @@ This document is the source of truth for the structured terminal output. It comp
 
 A clarification, because "contract" is overloaded in software:
 
-A `Contract` here is **not** a legal contract, **not** a smart-contract on a blockchain, **not** a service contract between microservices. It is the **claim contract** the agent emits at decision time, declaring what it believes, what it would trade, when the claim will be judged, and what would falsify it. The evaluator scores against future reality; the trajectory store preserves it for year-2 SFT; the promotion gate uses its calibration history to decide what enters memory.
+A `Contract` here is **not** a legal contract, **not** a smart-contract on a blockchain, **not** a service contract between microservices. It is the **claim contract** the agent emits at decision time, declaring what it forecasts, what it would trade, when the claim will be judged, and what would falsify it. The Tradable-Edge Action Engine then enriches the Contract with calibration shrinkage and action-gate verdicts. The evaluator scores against future realized returns; the trajectory store preserves it for year-2 SFT; the promotion gate uses its calibration history to decide what enters memory.
 
-Think of it as: *the typed terminal node of a model run, structured so the system can score, audit, and learn from it.*
+Think of it as: *the typed terminal node of a cognition run, with verifier-side calibration and gating attached, structured so the system can score, audit, and learn from it.*
 
 ---
 
-## The MVP Contract — required fields (Phase 0)
+## Cognition fields vs Verification fields
 
-Every `Contract` carries these fields. The Phase 0 evaluator (substep 4) scores against these. The model-interface Protocol (substep 6) types these.
+The Contract has two disjoint groups of fields:
+
+- **Cognition fields** — populated by the agent (the AI Core). The agent emits these and never touches the verification fields.
+- **Verification fields** — populated by the Tradable-Edge Action Engine (and downstream evaluator). The engine reads the cognition fields and computes these.
+
+The cognition/verification boundary (DESIGN.md #5) is enforced at the code level: `src/fingym/agents/` cannot write the verification fields, and `src/fingym/action/` cannot rewrite the cognition fields.
+
+---
+
+## The MVP Contract — required fields (Phase 0 + Phase 1 NEW)
+
+Every `Contract` carries these fields. Cognition fields land at Phase 0 (Contract Protocol) and become populated by a real LLM at Phase 1 NEW Cluster F. Verification fields become populated at Phase 1 NEW Cluster B (Tradable-Edge Action Engine).
 
 ```yaml
-# Required at Phase 0 — minimal scoreable contract
+# Required at Phase 0 + Phase 1 NEW — minimal scoreable v5 contract
 
 # --- Identity and timing ---
 contract_id: <uuid-string>           # stable, never reused
 decision_time: <iso datetime>        # the as-of time of the decision
-agent_id: <string>                   # which agent produced this
+agent_id: <string>                   # which agent produced the cognition fields
 model_id: <string>                   # which model was used (Claude / GPT / Gemini / open-weights)
 prompt_version: <string>             # which prompt structure (for population diversity)
 
-# --- What the agent looked at ---
+# --- COGNITION FIELDS (agent-emitted) ---
+
+# What the agent looked at
 evidence_ids: list[EvidenceRef]      # pointers to L0 trajectory rows
                                      # every reference must satisfy as_known <= decision_time
                                      # (the time-leak guard for Phase 1)
+data_sources_used: list[str]         # explicit categorization of source types consumed
+                                     # e.g., ["transcript", "10K", "headline_observables"]
 
-# --- What the agent thinks the world is ---
-hidden_state_hypotheses: list[HiddenStateHypothesis]
-                                     # the model's proposed state space
-                                     # the model defines this, not the system
+# What the agent forecasts
+forecast_distribution: ForecastDistribution
+                                     # F_AI(R) — distribution over realized return for this
+                                     # (name, horizon, expression-type). Sums to 1; no zero
+                                     # probabilities on values in the support (Cromwell).
+signal_class_id: str                 # tag for the Forecast Ledger's reliability bucket
+                                     # the agent classifies its own forecast into a signal class
+                                     # (e.g., "operational_leverage_q3_surprise", "supply_chain_disruption")
+                                     # the Ledger tracks per-signal-class reliability over many forecasts
+thesis_category: str                 # broader categorization for analytics and memory tagging
+                                     # finer than signal_class_id
 
-ai_belief: BeliefDistribution        # P_AI(S) — sums to 1
-                                     # never a point estimate
-                                     # may include Cromwell smoothing
-
-# --- What the agent thinks the market thinks ---
-market_implied_belief: MarketBeliefEstimate | None
-                                     # P_market(S) — recovered from price, options,
-                                     # estimates, spreads. Phase 0: None allowed
-                                     # (toy without market). Phase 2: required.
-
-belief_delta: BeliefDelta | None     # P_AI(S) − P_market(S). Phase 0: None allowed.
-                                     # Phase 2+: required when market_implied_belief is set.
-
-# --- What the agent does ---
+# What the agent recommends (raw — engine may override)
 horizon: str                         # "1m", "2m", "3m", "6m", "1y", or custom
-                                     # the horizon over which this claim is scored
+recommended_action: TradeAction | NoAction
+                                     # the agent's raw action recommendation
+                                     # engine verifies/gates and produces final_action below
+recommended_size: float              # fractional Kelly size from the agent's perspective; 0.0 for NoAction
+                                     # engine recomputes after calibration
 
-action_or_no_action: TradeAction | NoAction
-                                     # NoAction is a first-class output, not a degenerate case
-                                     # (DESIGN.md Operational Constraints)
+# How the agent will be judged
+falsifiers: list[Falsifier]          # what future observations would prove the forecast wrong
+                                     # must be at least 1
+realized_return_plan: RealizedReturnPlan
+                                     # which realized returns at which horizons will score this Contract
+                                     # carries the labelling function (simple vs log return, expression-specific
+                                     # payoff structure) used to construct realized returns
 
-recommended_size: float              # fractional Kelly size; 0.0 for NoAction
-                                     # bounded by sizer in Phase 2
-
-# --- How the agent will be judged ---
-falsifiers: list[Falsifier]          # what future observations would prove this wrong
-                                     # must be at least 1 (a Contract without falsifiers
-                                     # is unfalsifiable and rejected)
-
-label_plan: LabelPlan                # which labels will score this, at which horizons
-                                     # carries the labelling-function used to construct
-                                     # labels from future emissions (PYRAMID Stone 2)
-
-# --- How the agent thought (for VOI) ---
+# How the agent thought (for VOI; Phase 4 mechanism consumes)
 cognitive_audit_trail: list[CognitiveStep]
-                                     # log of (initial belief, additional reasoning,
-                                     # updated belief, action change) per cognitive iteration
-                                     # consumed by Phase 4 VOI mechanism
-                                     # at Phase 0 this is a one-step trail (no iteration)
+                                     # log of (initial forecast, additional reasoning, updated forecast,
+                                     # action change) per cognitive iteration
 
-# --- Optional memory proposal ---
+# Optional memory proposal
 memory_update_proposal: MemoryUpdateProposal | None
                                      # L2 proposal, fed to promotion gate (Phase 4)
-                                     # None is fine — most contracts don't propose memory
+
+# --- VERIFICATION FIELDS (Tradable-Edge Action Engine; Phase 1 NEW Cluster B) ---
+
+calibrated_forecast: ForecastDistribution | None
+                                     # F_AI_calibrated — agent's raw forecast shrunk toward
+                                     # per-signal-class empirical reliability from the Forecast Ledger
+                                     # None at Phase 0 (engine not yet built)
+                                     # Required from Phase 1 NEW Cluster B onward
+calibrated_expected_return: float | None
+                                     # E[R_realized | F_AI_calibrated] — expected value under shrunk distribution
+calibrated_expected_utility: float | None
+                                     # Kelly-equivalent calibrated EU under the shrunk distribution and cost model
+tradable_edge_score: float | None    # calibrated_expected_utility minus margin-of-safety threshold
+                                     # positive → trade gate clears; non-positive → NoAction
+kelly_fraction_applied: float | None # the engine's final sizing (may differ from recommended_size)
+cost_estimate: CostEstimate | None   # spread + commission + impact + alpha decay used in the gate
+final_action: TradeAction | NoAction | None
+                                     # the engine's verdict; may differ from recommended_action if the gate
+                                     # doesn't clear. This is the action scored downstream.
 ```
 
 ### Field semantics
 
-**`evidence_ids`** — every reference must point to an L0 trajectory row whose `as_known` is ≤ `decision_time`. The Phase 1 data spine enforces this via `time_leak_guard`. Phase 0 toys construct evidence in-memory; the guard is a no-op until L0 exists.
+**`evidence_ids`** — every reference must point to an L0 trajectory row whose `as_known` is ≤ `decision_time`. The Phase 1 NEW data spine (Cluster E for toy; Phase 2 NEW for real) enforces this via `time_leak_guard`. Phase 0 toys construct evidence in-memory; the guard is a no-op until L0 exists.
 
-**`hidden_state_hypotheses`** — the model defines its own state space. There is no fixed ontology. Coarse states ("healthy / deteriorating / fraud") are fine; fine-grained states are also fine. The state space lives inside the contract, not in code.
+**`data_sources_used`** — an explicit list of source-type tags. Used by the evaluator for slicing (e.g., "is this agent's edge in transcript-driven forecasts or in fundamentals-driven forecasts?") and by the promotion gate's survivorship check.
 
-**`ai_belief`** — a probability distribution over `hidden_state_hypotheses`. Must sum to 1 within floating-point tolerance. May not assign 0 to any hypothesis (Cromwell — see PYRAMID Stone 5). The evaluator's scoring rules (Brier, log score) operate on this field.
+**`forecast_distribution`** — `F_AI(R)`. A probability distribution over realized returns for the (name, horizon, expression-type). Representation: parametric (e.g., Gaussian, Student-t with named parameters), nonparametric (e.g., bucketed PMF), or quantile-based. Must sum/integrate to 1. May not assign 0 to any value in the support (Cromwell).
 
-**`market_implied_belief`** — Phase 0 may be `None` if no market is being modeled (e.g., the coin toy). The synthetic-market toy (Stone 15) and all of Phase 2+ require this field to be populated. Phase 2 builds the recovery mechanism (Stone 31).
+**`signal_class_id`** — the agent classifies its own forecast into a signal class (a string identifier). The Forecast Ledger maintains per-signal-class empirical reliability. The Tradable-Edge Action Engine reads this id at decision time to look up the reliability for shrinkage. Signal classes are a SEARCHABLE element (DESIGN.md "Searchable vs Architectural") — the agent proposes them; the Ledger tracks them; new classes emerge from agent cognition without architectural change.
 
-**`belief_delta`** — when both `ai_belief` and `market_implied_belief` are set, the delta must be computed and stored. Market-delta scoring (Stone 11a) operates on this field.
+**`thesis_category`** — finer-grained than `signal_class_id`. Used for memory tagging and population diversity tracking. Not used by the calibration shrinkage step.
 
-**`action_or_no_action`** — typed alternation. `NoAction` is not a special case of `TradeAction` with size = 0; it is a structurally distinct type. The verifier scores `NoAction` calls when no `TradeAction` had positive expected log-growth-after-costs. An agent that never emits `NoAction` is flagged (BIAS_PATTERNS #12).
+**`recommended_action`** — the agent's raw action recommendation. `TradeAction` carries the proposed expression (equity-long, option-call, etc.), strike/expiration if applicable, direction, and proposed size. `NoAction` carries a reason. **The agent's recommendation is not the final action**; the Tradable-Edge Action Engine may override it (e.g., shrink it to `NoAction` if calibrated EU doesn't clear margin-of-safety).
 
-**`recommended_size`** — fractional Kelly under model uncertainty. 0.0 for `NoAction`. The sizer (Stone 33) enforces fractional Kelly bounds; at Phase 0 the size is whatever the model emits, scored by the capacity-adjusted return metric.
+**`final_action`** — the engine's verdict after calibration + gate. This is what gets scored downstream.
 
-**`falsifiers`** — at least one required. A contract that names no falsifier is unfalsifiable narrative, not a scoreable claim. Falsifiers may be specific (a future earnings number, a price level, a guidance change) or pattern-based (a class of evidence that would contradict the belief).
+**`falsifiers`** — at least one required. A Contract that names no falsifier is unfalsifiable narrative, not a scoreable claim.
 
-**`label_plan`** — declares what labels at what horizons will score this contract. The labelling function is part of the plan, not implicit (PYRAMID Stone 2). One contract spawns multiple labels (one per horizon).
+**`realized_return_plan`** — declares the labelling function for realized returns (simple vs log, total-return vs price-return, expression-specific payoff structure for options/vol/pairs) and the horizons at which it applies.
 
-**`cognitive_audit_trail`** — Phase 0 is one entry: `(initial_belief = ai_belief, additional_reasoning = "", action_change = false, final_belief = ai_belief)`. Phase 2+ may have multiple entries if the agent iterates (e.g., decides to fetch more evidence, updates belief, then commits). The VOI mechanism (Phase 4) reads this trail to compute "did more thinking change the action?"
+**`cognitive_audit_trail`** — Phase 0 is one entry: `(initial_forecast = forecast_distribution, additional_reasoning = "", action_change = false, final_forecast = forecast_distribution)`. Phase 1 NEW Cluster F+ may have multiple entries if the LLM iterates. The VOI mechanism (Phase 4) reads this trail.
+
+**`calibrated_forecast`** — `F_AI_calibrated`. The Tradable-Edge Action Engine computes this by shrinking `forecast_distribution` toward the per-signal-class reliability from the Forecast Ledger. Phase 0: `None` (engine not yet built). Phase 1 NEW Cluster B+: required.
+
+**`calibrated_expected_utility`** — Kelly-equivalent EU under `calibrated_forecast` and `cost_estimate`. Computed by the Action Engine.
+
+**`tradable_edge_score`** — `calibrated_expected_utility − margin_of_safety_threshold`. Positive → the gate clears and `final_action` is a `TradeAction`. Non-positive → the gate does NOT clear and `final_action` is `NoAction`. This single signed scalar is the action-gate verdict.
+
+**`kelly_fraction_applied`** — the engine's final size after Kelly under the shrunk distribution. May differ from `recommended_size`.
+
+**`cost_estimate`** — the cost model used (spread + commission + impact + alpha decay). Populated by the engine, not by the agent.
+
+**`final_action`** — the engine's action verdict. The agent's `recommended_action` is the cognitive output; `final_action` is the verification output. Scoring downstream uses `final_action`.
 
 ---
 
 ## Deferred fields — what's queued and what triggers each
 
-These fields are real and load-bearing once the underlying machinery exists. They are **optional in the Phase 0 schema** so that no schema migration is required when they arrive — the model just starts populating them.
+These fields are real and load-bearing once the underlying machinery exists. They are **optional in the v5 schema** so that no schema migration is required when they arrive — the engine just starts populating them.
 
 | Deferred field | What it is | Phase it lands | Trigger to require |
 |---|---|---|---|
-| `cost_model` | Per-trade cost estimate (commissions, fees, financing, borrow) | Phase 2 | When the first model-driven agent ships and starts producing trade actions on real names |
-| `slippage_model` | Per-trade slippage estimate as a function of size and liquidity | Phase 2 | Same as `cost_model` |
-| `payoff_distribution` | Distribution of trade payoff conditional on each hidden state | Phase 2 | When the action search module (Stone 32 edge calculator) ships |
-| `expected_value_after_costs` | Scalar EV of the action net of cost+slippage | Phase 2 | Same |
-| `expected_log_growth_after_costs` | Scalar log-growth contribution of the action | Phase 2 | Same |
-| `max_loss` | Worst-case loss for sized position | Phase 2 | When the sizer (Stone 33) ships |
-| `capacity_estimate` | Maximum size at which edge survives market impact | Phase 5 | When capacity-adjusted scoring (Stone 44) ships |
-| `liquidity_constraints` | Borrow availability, options open interest, ADV limits | Phase 2 | When the first real-name trade is emitted |
+| `payoff_distribution` | Distribution of trade payoff conditional on each value of realized return | Phase 1 NEW Cluster B | When the Action Engine computes calibrated EU on real expressions |
+| `max_loss` | Worst-case loss for sized position | Phase 1 NEW Cluster B | When the sizer applies a fractional Kelly bound |
+| `capacity_estimate` | Maximum size at which edge survives market impact | Phase 5 | When capacity-adjusted scoring ships |
+| `liquidity_constraints` | Borrow availability, options open interest, ADV limits | Phase 2 NEW | When the first real-name trade is emitted |
 | `entry_conditions` | Conditions under which the trade is initiated | Phase 3 | When live operation starts |
 | `exit_conditions` | Conditions under which the trade is closed | Phase 3 | When live operation starts |
 | `correlation_haircut` | Reduction in size due to correlation with existing positions | Phase 4 | When the population mechanic produces multiple concurrent trades |
 | `crowding_estimate` | Estimate of how crowded this trade is among other participants | Phase 4 | When the proposer/promotion mechanic produces enough trade volume to matter |
+| `baseline_forecast_reference` | Pointer to the parallel Market-State Baseline forecast for this (name, horizon, expression) — for attribution joins | Phase 1 NEW Cluster I | When the toy Baseline produces parallel rows for the same (name, horizon, expression) |
 
-The principle: **build the smallest contract that the Phase 0 evaluator can score, then add fields as the consuming mechanisms ship.** The same principle as memory-design.md.
+The principle: **build the smallest contract that the v5 evaluator + Action Engine can score, then add fields as the consuming mechanisms ship.** The same principle as memory-design.md.
 
 ---
 
@@ -154,46 +184,63 @@ The principle: **build the smallest contract that the Phase 0 evaluator can scor
 
 Each line below names a failure mode the contract is explicitly designed against:
 
-- **Not a narrative.** A contract is not a memo, thesis, or rationale. Prose belongs in `cognitive_audit_trail` (for VOI) or in proposed memory (for promotion gate review) — never in lieu of the structured fields. See BIAS_PATTERNS.md #11 (narrative as evidence).
-- **Not an analyst checklist.** The contract is the OUTPUT shape, not a PROMPT template. The model decides its own reasoning sequence. See BIAS_PATTERNS.md #8 (narrowing the model interface).
-- **Not a single-horizon claim.** A contract names a horizon, but the model can emit multiple contracts at different horizons for the same underlying name. Multi-horizon scoring (Stone 10) operates on these in parallel.
-- **Not a portfolio recommendation.** A contract is one claim about one (name × horizon × expression). The portfolio is the aggregate of many contracts under capital constraints (Phase 3+).
-- **Not promoted memory.** A contract may propose a memory update, but the proposal is `L2 probationary` until the promotion gate runs. See memory-design.md.
-- **Not a P&L target.** Contracts are scored on calibration, market-delta accuracy, decision quality, and log-growth contribution — not on raw P&L. See DESIGN.md "Failure Modes" (Goodhart resistance).
+- **Not a narrative.** A Contract is not a memo, thesis, or rationale. Prose belongs in `cognitive_audit_trail` (for VOI) or in proposed memory (for promotion gate review) — never in lieu of the structured fields. See BIAS_PATTERNS.md #11 (narrative as evidence).
+- **Not an analyst checklist.** The Contract is the OUTPUT shape, not a PROMPT template. The model decides its own reasoning sequence. See BIAS_PATTERNS.md #8 (narrowing the model interface).
+- **Not a single-horizon claim.** A Contract names a horizon, but the model can emit multiple Contracts at different horizons for the same underlying name. Multi-horizon scoring (Stone 10) operates on these in parallel.
+- **Not a portfolio recommendation.** A Contract is one claim about one (name × horizon × expression). The portfolio is the aggregate of many Contracts under capital constraints (Phase 3+).
+- **Not promoted memory.** A Contract may propose a memory update, but the proposal is `L2 probationary` until the promotion gate runs. See memory-design.md.
+- **Not a P&L target.** Contracts are scored on calibration, per-signal-class reliability, tradable-edge accuracy, decision quality, and log-growth contribution — not on raw P&L. See DESIGN.md "Failure Modes" (Goodhart resistance).
+- **Not an unverified forecast.** The action gate operates on `calibrated_forecast` (the Action Engine's shrunk version), not on `forecast_distribution` (the agent's raw output). An agent whose `final_action` clears the gate without calibration shrinkage having been applied is a verifier-rejection event.
+- **Not a Baseline-aware emission.** The Contract's cognition fields are produced by the AI Core, which by code-level isolation never sees the Market-State Baseline's processed forecast. `baseline_forecast_reference` (deferred) is a pointer only, populated by the engine for attribution joins.
 
 ---
 
-## How the Contract relates to the four-thing decomposition
+## How the Contract relates to the three primitives plus audit layer
 
-The four objects from DESIGN.md Architectural Physics map directly to contract fields:
+The three primitives from DESIGN.md "Architectural Physics" map directly to Contract fields:
 
 | DESIGN.md object | Contract field |
 |---|---|
-| `S_true` | Never in the contract (unobservable). Known to the evaluator in toys; constructed via labelling function in real markets. |
-| `P_AI(S)` | `ai_belief` |
-| `P_market(S)` | `market_implied_belief` |
-| `Action(A)` | `action_or_no_action` |
-| `Edge = P_AI − P_market` (net of costs) | `belief_delta` (raw) + `expected_log_growth_after_costs` (cost-adjusted, Phase 2+) |
+| `R_realized` | Never in the Contract at decision time (unobservable). Stored separately in `realized_returns` table at horizon; joined to the Contract for scoring. |
+| `F_AI(R)` | `forecast_distribution` |
+| `Action(A)` | `recommended_action` (agent-emitted, raw) → `final_action` (engine's verdict after calibration + gate) |
+| `F_AI_calibrated` | `calibrated_forecast` |
+| Margin-of-safety gate verdict | `tradable_edge_score` (signed; positive → trade; non-positive → NoAction) |
 
-This is the structural reason the four-thing decomposition is load-bearing: it determines the contract schema.
+Audit-layer attribution objects:
+
+| DESIGN.md object | Where it lives |
+|---|---|
+| `F_baseline(R)` | NOT in the Contract — produced separately by `src/fingym/baseline/` and stored in the `forecasts` table tagged `agent_id = 'baseline'`. The Contract's `baseline_forecast_reference` (deferred field) can point to it for join. |
+| `Incremental_AI_edge` | A scoreboard column computed from this Contract's `final_action` realized edge minus the Baseline's parallel realized edge. Not a Contract field; it's downstream. |
+
+The structural reason v5 primitives shape the Contract: the action chain (cognition → calibration → gate → action) operates within a single Contract, while the Baseline runs in parallel and is joined for attribution downstream.
 
 ---
 
 ## Validation
 
-The Phase 0 evaluator (substep 4) and the model interface Protocol (substep 6) enforce:
+The Phase 0 evaluator (substep 4) and the model interface Protocol (substep 6) enforce the cognition-side validation. The Phase 1 NEW Cluster B engine enforces the verification-side validation.
 
-1. `ai_belief` is a valid probability distribution (sums to 1, no negative values, no zero values on hypotheses in the support).
-2. If `market_implied_belief` is set, `belief_delta` is computed and stored.
-3. Every `evidence_id` resolves to an L0 row (Phase 1+; Phase 0 toys construct in-memory).
-4. Every `evidence_id`'s `as_known` is ≤ `decision_time` (time-leak guard, Phase 1+).
-5. `falsifiers` is non-empty.
-6. `label_plan` declares at least one (label, horizon) pair.
-7. `recommended_size` is 0.0 iff `action_or_no_action` is `NoAction`.
-8. `horizon` is one of the registered evaluation windows (or a declared custom horizon).
-9. `cognitive_audit_trail` has at least one entry (the initial belief and final belief, even if no iteration occurred).
+**Cognition-side validation** (applied to the agent's raw emission):
 
-Failing any check → the contract is rejected at the verifier gate, not scored, not persisted to the trajectory store. The agent run is recorded as a verifier-rejection in the operational log.
+1. `forecast_distribution` is a valid probability distribution (sums/integrates to 1, no negative values, no zero values on points in the support).
+2. `signal_class_id` is non-empty.
+3. Every `evidence_id`'s `as_known` is ≤ `decision_time` (time-leak guard; Phase 1+).
+4. `falsifiers` is non-empty.
+5. `realized_return_plan` declares at least one (horizon, labelling rule) pair.
+6. `recommended_size` is 0.0 iff `recommended_action` is `NoAction`.
+7. `horizon` is one of the registered evaluation windows (or a declared custom horizon).
+8. `cognitive_audit_trail` has at least one entry.
+
+**Verification-side validation** (applied after the engine runs):
+
+9. If `calibrated_forecast` is set, it is also a valid probability distribution (same shape constraints as `forecast_distribution`).
+10. `tradable_edge_score` ≥ 0 iff `final_action` is a `TradeAction`. `tradable_edge_score` < 0 iff `final_action` is `NoAction`.
+11. `kelly_fraction_applied` is 0.0 iff `final_action` is `NoAction`.
+12. The engine's `cost_estimate` is populated whenever `final_action` is a `TradeAction`.
+
+Failing any check → the Contract is rejected at the verifier gate, not scored, not persisted as a valid trajectory row. The rejection is recorded in the operational log.
 
 ---
 
@@ -201,12 +248,14 @@ Failing any check → the contract is rejected at the verifier gate, not scored,
 
 | Artifact | Location |
 |---|---|
-| Contract pydantic model | `src/fingym/agents/contract.py` (Phase 0 substep 6) |
-| Contract validator | `src/fingym/agents/contract_validator.py` (Phase 0 substep 6) |
+| Contract pydantic model | `src/fingym/agents/contract.py` (Phase 0 substep 6; v5 cleanup pass restructures fields) |
+| Contract validator (cognition side) | `src/fingym/agents/contract_validator.py` (Phase 0 substep 6; v5 cleanup updates checks) |
+| Contract validator (verification side) | `src/fingym/action/validator.py` (Phase 1 NEW Cluster B) |
 | Model interface Protocol | `src/fingym/agents/interface.py` (Phase 0 substep 6) |
 | Evidence reference type | `src/fingym/agents/evidence.py` (Phase 1) |
-| Trajectory row from contract | `src/fingym/data/trajectory.py` (Phase 1) |
+| Trajectory row from Contract | `src/fingym/data/trajectory.py` (Phase 1) |
 | Contract-to-memory-proposal converter | `src/fingym/memory/proposal.py` (Phase 2) |
+| Tradable-Edge Action Engine | `src/fingym/action/engine.py` (Phase 1 NEW Cluster B) |
 
 ---
 

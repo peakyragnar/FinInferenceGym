@@ -11,15 +11,17 @@ Property under test:
 
     - UniformAgent's mean Brier is exactly 2/3 by symmetry — for any
       truth distribution in a 3-state hypothesis space.
-    - BayesianAgent's mean gap on truth is near zero — both the agent
-      and the market converge close to truth by the end of each episode.
-    - The two broken agents (Confident, Uniform) have strongly negative
-      mean gap — anti-edge, because they never moved while the market did.
 
 PYRAMID.md Stone 16 demonstrates the property by inspection;
 this file (Stone 17) locks it in as a CI gate. Any future change to the
 evaluator, the toy world, or the adversarial agents that breaks the
 ordering will fail this test.
+
+The pre-v5 "Market" parallel agent and `mean_gap` (belief-delta-on-truth)
+tests were removed by the Constitution v5 cleanup pass alongside the
+`belief_delta_on_truth` scoring function and the Stone 11a market-belief
+priors. New v5 integration tests for the Forecast Ledger reliability and
+calibration shrinkage land when those stones are taught.
 """
 
 from __future__ import annotations
@@ -33,7 +35,6 @@ from fingym.toys.adversarial_agents import AgentMeans, aggregate_n_episodes
 CONFIDENT = "ConfidentAgent(decaying, p=0.95)"
 UNIFORM = "UniformAgent"
 BAYESIAN = "BayesianAgent"
-MARKET = "Market"
 
 
 @pytest.fixture(scope="module")
@@ -73,28 +74,3 @@ def test_uniform_mean_brier_equals_theoretical_baseline(
     """
     expected = 2.0 / 3.0
     assert abs(per_agent[UNIFORM].mean_brier - expected) < 1e-9
-
-
-def test_bayesian_has_near_zero_mean_gap(
-    per_agent: dict[str, AgentMeans],
-) -> None:
-    """BayesianAgent's mean gap on truth is small.
-
-    Both the Bayesian agent and the market converge close to truth by tick
-    12 of each episode (Stone 15 Run 1 pattern — edge erodes as evidence
-    accumulates). Mean across 100 episodes is therefore near zero.
-    """
-    assert abs(per_agent[BAYESIAN].mean_gap) < 0.05
-
-
-def test_broken_agents_have_strong_anti_edge(
-    per_agent: dict[str, AgentMeans],
-) -> None:
-    """Confident and Uniform both have strongly negative mean gap.
-
-    The market converges close to truth; the frozen agents do not. Their
-    P(truth) stays far from the market's, producing large negative gaps in
-    every episode where the market converges away from them.
-    """
-    assert per_agent[CONFIDENT].mean_gap < -0.4
-    assert per_agent[UNIFORM].mean_gap < -0.4

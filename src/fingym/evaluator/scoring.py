@@ -87,30 +87,6 @@ def log_score[H](belief: dict[H, float], outcome: H) -> float:
     return -math.log(probability)
 
 
-def belief_delta_on_truth[H](p_ai: dict[H, float], p_market: dict[H, float], outcome: H) -> float:
-    """Signed gap between agent and market beliefs on the realized outcome.
-
-        delta = P_AI[outcome] - P_market[outcome]
-
-    Range: [-1.0, +1.0]. The Stone 11a per-row metric (PYRAMID.md Stone 11a,
-    FORMULAS.md "Market-delta scoring"). Sign reads as:
-
-        > 0  agent more confident on the truth than the market (edge)
-        = 0  agreement on the truth (no edge to extract)
-        < 0  market more confident on the truth than the agent (anti-edge)
-
-    Unlike Brier and log_score, this is signed — not a loss — and structurally
-    independent of Layer-1 calibration: two contracts with identical Brier and
-    log_score can have very different belief_delta_on_truth, because Brier and
-    log_score never see `P_market`. That independence is exactly why Stone 11a
-    earns its own scoreboard column.
-
-    Missing outcome keys in either belief are treated as probability 0.0. The
-    gap stays finite regardless; Cromwell loudness lives in log_score.
-    """
-    return p_ai.get(outcome, 0.0) - p_market.get(outcome, 0.0)
-
-
 @dataclass(frozen=True)
 class ReliabilityBucket:
     """One row of a reliability diagram (PYRAMID.md Stone 8 / Stone 18).

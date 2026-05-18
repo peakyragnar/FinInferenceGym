@@ -2,6 +2,8 @@
 
 Glossary of core vocabulary for the Financial Inference Gym. Definitions are short, operational, and tied to how the gym will work. Math and worked examples live elsewhere. Entries are alphabetical.
 
+This file grows as teaching proceeds. New v5 vocabulary (Forecast Ledger, Signal Class, Signal-Class Reliability, Tradable Edge, Calibrated Expected Utility, Market-State Baseline, Track A, Track C, Incremental AI Edge, Realized Edge, Forecast Edge, etc.) lands here as the corresponding PYRAMID stones are taught and distilled (the cadence used throughout Phase 0).
+
 ## Action space
 
 The set of actions available to the agent at decision time. The smallest non-trivial action space contains one **COMMIT** action per hypothesis plus a **NO-EDGE** action that declines to commit, with **OBSERVE_AGAIN** as an auxiliary action that buys more evidence before committing.
@@ -20,11 +22,11 @@ The fact that losses and gains do not cancel in compound returns. A 50% drawdown
 
 ## Bandit
 
-A decision problem where the agent must repeatedly choose between multiple "arms," each of which has its own cost and reveals a signal about the hidden state. The agent's task is to allocate a budget across arms to maximize decision-relevant information per dollar. In the gym, each kind of observation (transcript, options data, peer behavior, etc.) is an arm.
+A decision problem where the agent must repeatedly choose between multiple "arms," each of which has its own cost and reveals a signal. The agent's task is to allocate a budget across arms to maximize decision-relevant information per dollar. In the gym, each kind of observation (transcript, options data, peer behavior, etc.) is an arm.
 
 ## Belief
 
-A probability distribution over hypotheses. Not a guess. Not a point estimate. A weighted distribution that sums to 1.
+A probability distribution over hypotheses. Not a guess. Not a point estimate. A weighted distribution that sums to 1. Under v5, the agent's belief at decision time is a **forecast distribution over realized returns** (see `Contract`).
 
 ## Brier score
 
@@ -32,7 +34,7 @@ A proper scoring rule for probabilistic predictions. For each prediction, take t
 
 ## Calibration
 
-The property that, when the agent says X%, the truth occurs X% of the time across many such calls. A 70%-calibrated agent is honest about what it knows. An overconfident agent (says 99%, right only 70%) is structurally wrong even when individual calls land correctly.
+The property that, when the agent says X%, the truth occurs X% of the time across many such calls. A 70%-calibrated agent is honest about what it knows. An overconfident agent (says 99%, right only 70%) is structurally wrong even when individual calls land correctly. Under v5, calibration is measured empirically per signal class via the Forecast Ledger (v5 vocabulary to be defined when its PYRAMID stone is taught).
 
 ## Capacity
 
@@ -44,59 +46,43 @@ A bandit problem where the optimal arm depends on **context** — the specific c
 
 ## Contract
 
-The structured terminal output an agent emits at decision time. A `Contract` is the typed object that turns unconstrained model cognition into a scoreable, market-relative, time-separated claim. Every cognitive output that the system takes seriously must take this form. The MVP spec is in [CONTRACT.md](CONTRACT.md). At minimum a `Contract` carries: `decision_time`, `evidence_ids`, `hidden_state_hypotheses`, `ai_belief` (`P_AI(S)`), `market_implied_belief` (`P_market(S)`), `belief_delta`, `horizon`, `action_or_no_action`, `recommended_size`, `falsifiers`, `label_plan`, `cognitive_audit_trail`, and (optional) `memory_update_proposal`. A model output that does not land in a `Contract` is prose, not alpha — see [BIAS_PATTERNS.md](BIAS_PATTERNS.md) #11 (narrative as evidence).
-
-## Edge
-
-The agent's calibrated belief about the state minus the market's implied belief about the state, net of trade costs. Symbolically: `P_AI(S) − P_market(S)` net of costs. Three conditions must all hold for edge to be real: (a) disagreement with the market, (b) calibration of the agent's stated confidence, (c) gap large enough to survive costs, slippage, and time. If any one fails, edge is zero or negative in expectation, regardless of how confident the agent feels.
+The structured terminal output an agent emits at decision time. A `Contract` is the typed object that turns unconstrained model cognition into a scoreable, time-separated, calibration-ready claim. Every cognitive output the system takes seriously must take this form. The MVP spec is in [CONTRACT.md](CONTRACT.md). Cognition fields are populated by the agent (AI Core); verification fields are populated by the Tradable-Edge Action Engine. A model output that does not land in a `Contract` is prose, not alpha — see [BIAS_PATTERNS.md](BIAS_PATTERNS.md) #11 (narrative as evidence).
 
 ## Emission
 
-An observation produced by a hidden state. The visible shadow of the state. Coin flips are emissions of the coin's identity; reported revenue, transcripts, and stock prices are emissions of a company's underlying state. The agent sees emissions; the state is hidden.
+An observable produced by some underlying world process — earnings releases, transcripts, regulatory filings, fundamental disclosures, prices, headline observables (rates / realized + implied vol / FX / commodities). The agent reads emissions; the process producing them is not directly observed. Inference is the act of forming a forecast over the future given the emissions seen so far.
 
 ## Evaluator
 
-The external judge that scores the agent's beliefs against labels using a proper scoring rule. The agent proposes. The evaluator disposes. Never let the agent score itself.
+The external judge that scores the agent's forecasts against realized returns using proper scoring rules. The agent proposes. The evaluator disposes. Never let the agent score itself.
 
 ## Expected value (EV)
 
-The probability-weighted average of payoffs across outcomes for a given action. With current belief `P` and payoff structure `V`:
+The probability-weighted average of payoffs across outcomes for a given action. With current forecast `F` and payoff structure `V`:
 
 ```text
-EV(action) = sum over outcomes of P(outcome) × V(action, outcome)
+EV(action) = sum over outcomes of F(outcome) × V(action, outcome)
 ```
 
-The decision rule is: take the action with the highest EV. EV is only honest when the belief feeding it is calibrated — an overconfident agent doing EV math on inflated probabilities will systematically over-act.
+The decision rule is: take the action with the highest EV. EV is only honest when the forecast feeding it is calibrated — an overconfident agent doing EV math on inflated probabilities will systematically over-act. Under v5, the Tradable-Edge Action Engine computes EV under the **calibration-shrunk** forecast, not under the agent's raw forecast.
 
 ## Fractional Kelly
 
 A practical version of the Kelly fraction that bets a multiple less than 1.0 (e.g., 0.5× Kelly, 0.25× Kelly) to absorb miscalibration of the agent's stated edge. Full Kelly assumes the edge is known exactly; in practice it is estimated. Even small overestimates lead full Kelly to overbet and risk ruin. Most professional traders run between 0.25× and 0.5× Kelly.
 
-## Hidden state
-
-The real, unobserved thing the agent wants to know about: which coin is in the box, whether a company's demand is strengthening or weakening, whether management is honest. The agent never sees the state directly — only emissions of it. Inference is the inverse of emission.
-
 ## Hypothesis
 
-A candidate "world" or story the agent entertains as possibly true. The agent never sees which hypothesis is correct — it only sees observations, and assigns belief across the hypothesis space.
-
-## Implied DCF
-
-A discounted cash-flow model run in reverse: given the current stock price, solve for the revenue growth, margin trajectory, or discount rate that would justify it. The output is the market's implied belief about future fundamentals — its forecast, recovered from price. One of the central tools for surfacing disagreements between agent and market.
-
-## Implied volatility
-
-A scalar derived from option prices that compresses the market's uncertainty about future price moves over a specified window. An emission of the market's belief about state-uncertainty: "this is how unsure the market thinks it should be about the future state." Distinct from realized volatility, which is a property of past price movements.
+A candidate value or bucket the agent entertains as possibly true. The agent never sees which hypothesis is correct — it only sees observations, and assigns belief across the hypothesis space. Under v5, the hypothesis space is the support of the agent's forecast distribution over realized returns.
 
 ## Inference chain
 
-The structural loop the entire gym is built around:
+The structural loop the gym is built around:
 
 ```text
-hidden state → emission rules → observations → belief
+emissions → forecast distribution over realized returns
 ```
 
-The state produces emissions according to known or hypothesized rules. The agent observes the emissions and updates a belief over possible states. Inference is the inverse of emission. Every layer of the gym sits inside this chain.
+The agent observes emissions and produces a forecast distribution. The forecast is then shrunk toward per-signal-class empirical reliability (verifier-side calibration step), and the action gate operates on the shrunk forecast. Every layer of the gym sits inside this chain. (Pre-v5 framing — "hidden state → emission rules → observations → belief" — was retired by Constitution v5.)
 
 ## Kelly fraction
 
@@ -104,11 +90,11 @@ The fraction of bankroll that maximizes long-run compound growth rate for a give
 
 ## Label
 
-The future truth or outcome the evaluator uses to score the agent. The agent does not see the label when making its prediction. Only the evaluator sees it later.
+The future truth or outcome the evaluator uses to score the agent. The agent does not see the label when making its prediction. Only the evaluator sees it later. Under v5, the label is the **realized return** at horizon for the `(name, horizon, expression-type)` the forecast applies to.
 
 ```text
 observation = evidence available then
-label       = truth revealed later
+label       = realized return revealed later
 ```
 
 If observations are treated as labels, the gym becomes fake.
@@ -121,33 +107,21 @@ How often a given hypothesis would produce the observation that was just seen, i
 
 The price move caused by the agent's own trading activity. Buying pushes price up; selling pushes it down. Scales with position size relative to market liquidity. Closely related to **slippage** — the difference between the price the agent intended to trade at and the price it actually got. Any honest evaluator must price market impact at the size the strategy is intended to run.
 
-## Market-implied belief
-
-The belief about the hidden state that the market would have to hold to produce its observed emissions (price, options chain, implied vol). Recovered by inverting the market's pricing machinery — implied DCF, options-implied probabilities, implied volatility. The single most useful "second opinion" the agent has access to. The agent's task is to compare its own belief to the market-implied belief and act only on calibrated disagreements.
-
 ## No-edge
 
-The action of declining to commit to any hypothesis. Zero expected payoff, zero expected loss, in every state. The correct default when no commit-action has positive EV after accounting for payoff asymmetry. In real markets, the well-calibrated agent's most-used action. Overconfident agents say it too rarely; underconfident agents say it too often. NO-EDGE is a **first-class output** in the system (DESIGN.md Operational Constraints) — the verifier explicitly rewards it when correct. A `Contract` whose `action_or_no_action` field carries `NoAction` is structurally equivalent to one carrying `TradeAction`; both are scored, both can be promoted into memory, and both contribute to the trajectory store.
+The action of declining to commit to any forecast-driven trade. Zero expected payoff, zero expected loss, in every state. The correct default when no commit-action has positive calibrated expected utility after the margin-of-safety threshold. In real markets, the well-calibrated agent's most-used action. Overconfident agents say it too rarely; underconfident agents say it too often. NO-EDGE is a **first-class output** in the system (DESIGN.md Operational Constraints) — the verifier explicitly rewards it when correct. A `Contract` whose `final_action` carries `NoAction` is structurally equivalent to one carrying `TradeAction`; both are scored, both can be promoted into memory, and both contribute to the trajectory store.
 
 ## NoEdgeContract
 
-Informal name for a `Contract` whose `action_or_no_action` field is `NoAction`. Carries the same required fields as a trade-bearing `Contract` (belief, market-implied belief, delta, falsifiers, label plan) — declining to trade is itself a typed claim that gets scored. Did the no-edge call hold up? Was the market correct that there was no opportunity? The `NoEdgeContract` is the verifier's defense against trade-for-trade's-sake (BIAS_PATTERNS.md #12).
+Informal name for a `Contract` whose `final_action` is `NoAction`. Carries the same required fields as a trade-bearing `Contract` (forecast distribution, signal class, falsifiers, realized return plan, cognitive audit trail) — declining to trade is itself a typed claim that gets scored. Did the no-edge call hold up? Was the margin-of-safety gate's verdict correct? The `NoEdgeContract` is the verifier's defense against trade-for-trade's-sake (BIAS_PATTERNS.md #12).
 
 ## Observation
 
-Information available to the agent at the time it must form a belief. Evidence, not truth. Can be useful, misleading, incomplete, delayed, or contaminated by consensus.
-
-## P_AI(S)
-
-The agent's calibrated belief over the hidden state `S`, given evidence available at decision time. Symbolic shorthand for the `ai_belief` field of a `Contract`. One of the four objects in the four-thing decomposition (DESIGN.md Architectural Physics). Honest only when the underlying belief is calibrated; produced by the model, scored by the evaluator.
-
-## P_market(S)
-
-The market-implied belief over the hidden state `S`, recovered from observable market emissions: price, options chain, implied volatility, analyst estimate distributions, credit spreads, short interest, factor exposures. Symbolic shorthand for the `market_implied_belief` field of a `Contract`. Recovered by inverting the market's pricing machinery (Stone 31 — market-implied belief recovery). The system's most useful "second opinion." One of the four objects in the four-thing decomposition.
+Information available to the agent at the time it must form a forecast. Evidence, not truth. Can be useful, misleading, incomplete, delayed, or contaminated by consensus.
 
 ## Payoff structure
 
-The matrix of rewards and losses for each (action, outcome) pair. The same belief can imply different decisions under different payoff structures — a 70% confidence can be a strong commit under symmetric payoffs and a stand-aside under asymmetric downside. **Decisions depend on belief and payoff structure together, never belief alone.**
+The matrix of rewards and losses for each (action, outcome) pair. The same forecast can imply different decisions under different payoff structures — a 70% confidence can be a strong commit under symmetric payoffs and a stand-aside under asymmetric downside. **Decisions depend on forecast and payoff structure together, never forecast alone.**
 
 ## Point-in-time
 
@@ -159,7 +133,7 @@ The agent's belief over its hypotheses *after* the observation has been incorpor
 
 ## Price
 
-An emission of the **market's belief about the hidden state**, not of the state itself. A high price means the market currently believes the state is favorable. A price change means the market's belief changed, which can occur for state reasons or for market-reaction-to-emission reasons; the two are not distinguishable from price alone. Inverting the price recovers the market's implied belief.
+An observable market emission. Under v5, used by the Market-State Baseline (Track C) as a headline observable and by the realized-return labelling function (the realized return at horizon is computed from price + corporate actions + payoff structure). The AI Core consumes the same raw prices the Baseline does. Neither the agent nor the Action Engine inverts price to recover a market belief over hidden state — that pre-v5 mechanism was removed by Constitution v5; calibration is now empirical, via the Forecast Ledger.
 
 ## Prior
 
@@ -171,31 +145,28 @@ A scoring rule with the property that, on average, the way to maximize your scor
 
 ## Realized volatility
 
-The standard deviation of past price returns over a specified window. A statistic computed from past emissions — a description of how the price actually moved. Distinct from implied volatility, which is a forward-looking emission of the market's belief.
-
-## S_true
-
-The actual hidden state of the company / world. Unobservable in real markets; revealed only through future emissions and never with certainty. In toy worlds, `S_true` is known to the evaluator (which is why toys exist). One of the four objects in the four-thing decomposition (DESIGN.md Architectural Physics). The agent forms `P_AI(S)` as its belief about `S_true`; the evaluator later scores `P_AI(S)` against labels constructed from observed proxies for `S_true`.
+The standard deviation of past price returns over a specified window. A statistic computed from past emissions. Used as one of the Market-State Baseline's headline observable inputs.
 
 ## Reflexivity
 
-The phenomenon by which the agent's own activity becomes part of the market's information environment — and, in strong forms, part of the hidden state itself. Two flavors:
+The phenomenon by which the agent's own activity becomes part of the market's information environment — and, in strong forms, part of the world process being forecast. Two flavors:
 
 - **Mechanical impact** — slippage that degrades the price at which the agent can execute.
-- **Belief impact** — other participants observe the agent's trades and update their beliefs about the state.
+- **Belief impact** — other participants observe the agent's trades and update accordingly.
 
-The strongest form is **Soros-style reflexivity**, where the act of trading changes the underlying business or system: buying enough of a stock lowers the company's cost of capital and improves its fundamentals; short-selling enough starves it and weakens it. Reflexivity corrupts the inference chain by making the state non-independent of the agents observing it.
+The strongest form is **Soros-style reflexivity**, where the act of trading changes the underlying business or system: buying enough of a stock lowers the company's cost of capital and improves its fundamentals; short-selling enough starves it and weakens it. Reflexivity corrupts the inference chain by making the world process non-independent of the agents forecasting it.
 
 ## Shape of the gym
 
 Every primitive in the gym sits inside one frame:
 
-- **Costly observation** → buy more emissions to refine your belief about the state.
-- **Source diets** → which emissions are most informative about which states?
-- **Market-implied belief** → invert the market's emission (price) to recover its belief about the state, then ask whether your belief is different.
-- **Bet card / no-edge** → act on the gap between your belief about the state and the market's, sized by your confidence.
+- **Costly observation** → buy more emissions to refine your forecast.
+- **Source diets** → which emissions are most informative about realized returns?
+- **Forecast + empirical calibration** → produce a forecast distribution over realized returns; the verifier shrinks it toward per-signal-class empirical reliability.
+- **Margin-of-safety action gate / no-edge** → act only when calibrated expected utility clears a threshold; otherwise NoAction.
+- **Isolated Market-State Baseline** → a parallel control on headline observables, used for incremental-AI-edge attribution.
 
-The unifying form: **infer the state from the shadows, then act on the gap between your inference and somebody else's.**
+The unifying form: **forecast the future from the shadows, empirically calibrate the forecast, and act only when the gate clears — then audit what edge came from the AI vs from headline observables anyone has.**
 
 ## Source diet
 
@@ -205,10 +176,10 @@ The policy that selects which sources (arms) the agent consumes for which kinds 
 
 The two distinct failure modes a losing position can exhibit:
 
-- **Wrong on timing** — the belief about the hidden state is correct; the market has not yet updated. Right action: hold or add.
-- **Wrong on thesis** — the belief was wrong; new emissions contradict it. Right action: close.
+- **Wrong on timing** — the forecast was correct; the market has not yet moved. Right action: hold or add.
+- **Wrong on thesis** — the forecast was wrong; new emissions contradict it. Right action: close.
 
-They look identical in P&L day-to-day and demand opposite responses. The rule for telling them apart: **update on emissions, not on price.** A new emission inconsistent with the hypothesis lowers the posterior; a price move with no new emission does not.
+They look identical in P&L day-to-day and demand opposite responses. The rule for telling them apart: **update on emissions, not on price.** A new emission inconsistent with the forecast lowers the posterior; a price move with no new emission does not.
 
 ## Time costs
 
@@ -217,10 +188,10 @@ The four costs of holding a position over time, all of which must be priced by a
 - **Opportunity cost** — capital tied up is unavailable for other edges.
 - **Carrying cost** — direct cost of holding (futures, options, levered positions).
 - **Psychological cost** — long drawdowns erode discipline and cause closing at the wrong moment.
-- **Information decay** — the world drifts; conditions under which the belief was formed may no longer hold.
+- **Information decay** — the world drifts; conditions under which the forecast was formed may no longer hold.
 
 "I'll just wait" is not a free action.
 
 ## Value of information (VoI)
 
-The expected change in the agent's best-action EV after seeing a potential observation, computed before paying for it. The decision rule is: buy the observation if `VoI > cost`; otherwise commit. VoI counts only belief changes that **cross a decision threshold** — belief shifts that leave the action unchanged are worth zero. Serves simultaneously as a stop rule (stop observing when no observation has positive VoI net of cost) and a research-discipline rule (research only where research might change the bet). Honest only when the belief feeding it is calibrated.
+The expected change in the agent's best-action EV after seeing a potential observation, computed before paying for it. The decision rule is: buy the observation if `VoI > cost`; otherwise commit. VoI counts only belief changes that **cross a decision threshold** — belief shifts that leave the action unchanged are worth zero. Serves simultaneously as a stop rule (stop observing when no observation has positive VoI net of cost) and a research-discipline rule (research only where research might change the bet). Honest only when the forecast feeding it is calibrated.

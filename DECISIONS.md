@@ -308,6 +308,135 @@ Every entry: **what was proposed → why rejected → principle / commitment inv
 
 ---
 
+## Constitution tightening v5 (2026-05): belief over realized returns; Forecast Ledger; isolated Market-State Baseline
+
+- **Context**: After Phase 0 closed (132 tests green, mypy strict clean, phase-gate audit passed) and Phase 1 NEW began with Cluster A (Stone 31 — market-implied belief recovery in the toy), Michael flagged that the load-bearing primitive of DESIGN.md commitment #2 (the `P_AI − P_market` gap on truth state) had structural weaknesses that an architectural revision was required to address. A long deliberation across 2026-05-17/18 spanning three rounds of progressive pushback led to a reformulation: belief is no longer over hidden state with `P_market` recovery; instead, the system forecasts realized returns directly, calibrates empirically via a Forecast Ledger per signal class, gates action on calibrated expected utility (NOT on a market-belief gap), and runs a Market-State Baseline (Track C) as an isolated control / diagnostic / attribution layer. This is the largest constitutional change since v1 — it reformulates the central commitment that drove the four-thing decomposition (v2), the Stone 11a market-delta column, the two-believer toy (Stone 15 step 3), and the Phase 1 NEW Cluster A plan. Pre-v5 stable tag `v0.1` was placed at commit `64df5a4` on 2026-05-18 as the return point; the persistent revision tracker is `CONSTITUTION_V5_PLAN.md` at repo root.
+
+- **The three structural problems with the prior framing** (what motivated the rewrite):
+  1. **Hidden state is our construct, not a property of equity markets.** The 3-state synthetic-market toy `{strengthening, stable, decaying}` works because we constructed the world and labelled its states. Real equity markets do not have hidden categorical states that future emissions reveal — they have realized returns. To preserve the hidden-state framing on real data, we would need a labelling function that categorizes returns into states. The function itself becomes a research project with its own bias-import risks (which proxies, which threshold, which horizon).
+  2. **`P_market(S)` recovery is model-dependent and brittle.** Inverting observable prices / options / spreads to recover a market belief over hidden state requires a payoff model (implied DCF, Black-Scholes, options-implied probability, etc.). Each is itself a strong prior masquerading as a measurement; small misspecifications produce large recovery errors that propagate into `belief_delta`.
+  3. **Acting on the `P_AI − P_market` gap admits a silent-failure mode.** A biased recovery of `P_market` produces a biased belief delta, which produces false signals about edge / no-edge. The system has no internal mechanism to detect that its `P_market` recovery is wrong — the gap looks like edge whether or not the recovery is right. This is the load-bearing flaw the deliberation surfaced.
+
+- **Decision** (six coordinated changes):
+
+  1. **DESIGN.md commitment #2 reformulated.** Old: "Belief is over hidden state, not over outcomes. The agent ALSO infers what the market believes about state; the system monetizes the gap `P_AI − P_market`." New (to be drafted in Phase A's DESIGN.md edit): belief is a forecast distribution over realized returns; calibration is maintained empirically via a Forecast Ledger; action is gated on calibrated expected utility clearing a margin of safety; the Market-State Baseline (Track C) is an isolated control. The agent never sees the Baseline's processed forecast; it sees only the same raw observables the Baseline consumes.
+
+  2. **Six-component system architecture replaces the four-thing decomposition:**
+
+     | Component | Role | DESIGN.md anchor |
+     |---|---|---|
+     | AI Core | Reads raw evidence; emits forecast distribution over realized returns | #6 (raw evidence native reasoning) |
+     | Forecast Ledger | Append-only record of every forecast indexed by signal-class; per-signal-class reliability tracked empirically over many forecasts | #1 (evaluator load-bearing) |
+     | Tradable-Edge Action Engine | Shrinks AI forecast toward empirical reliability; computes calibrated expected utility; gates action on margin-of-safety threshold | #4 (verified updates only) |
+     | Market-State Baseline (Track C) | Isolated control using headline observable inputs; shares raw factor inputs with AI; processed forecast hidden from AI; used for attribution | #5 (cognition/verification boundary) |
+     | Scoring Layer | Brier, log score, reliability diagrams, capacity-adjusted return — applied to forecasts over returns | Stones 6, 7, 8, 14 |
+     | Memory + Promotion + Population | Architecture unchanged; promotion-gate metrics updated to match new framing | #4, #7, #9 |
+
+  3. **Action gate reformulated.** Old: action when `belief_delta` on truth-candidate state exceeds cost threshold, with three Stone 13 coherence checks (threshold-match, direction-match, expression-match). New: action when **calibrated expected utility** clears a margin-of-safety threshold. The calibration step uses the Forecast Ledger's per-signal-class reliability to shrink the AI's raw forecast toward the empirical truth-rate-given-stated-confidence. The gate is the structural defense against the silent-failure mode that motivated the rewrite.
+
+  4. **Market-State Baseline as code-level isolated control.** A `src/fingym/baseline/` module runs in isolation using only headline observable inputs (rates, vol, FX, commodities). Import-linter rule: `src/fingym/agents/` cannot import from `src/fingym/baseline/`. The AI Core never sees the Baseline's processed forecast. The AI Core DOES see the same raw observable inputs the Baseline consumes (they are public observables available to both). The Baseline produces three diagnostic columns on the scoreboard — incremental AI edge (AI realized edge minus Baseline realized edge), Baseline forecast edge, Baseline realized edge — none of which are inputs to the AI; all are outputs for the audit layer.
+
+  5. **Two-believer toy collapses to single-believer toy.** Old: `src/fingym/toys/synthetic_market.py` had `STONE_11A_AGENT_PRIOR` and `STONE_11A_MARKET_PRIOR` constants and ran two parallel believers (agent + market) with different priors to test the `belief_delta_on_truth` column. New: the toy emits realized returns; a single believer forecasts the next return; the Forecast Ledger records the forecast and the realized outcome; reliability is computed empirically over many forecasts. Phase D refactor lands this code change.
+
+  6. **CONTRACT.md fields restructured.** Removed: `market_implied_belief`, `belief_delta`, `hidden_state_hypotheses`. Renamed: `ai_belief` → `forecast_distribution`. Added: `thesis_category`, `data_sources_used`, `signal_class_id`, `calibrated_expected_return`, `tradable_edge_score`, `kelly_fraction_applied`, `cost_estimate`. Full schema rewrite in Phase B.
+
+- **The three rounds of architectural pushback** (the deliberation arc — each round surfaced something the prior framing had missed):
+
+  1. **Silent-failure concern (Round 1).** Michael pushed back that `P_market` recovery via inversion couldn't be verified — a biased recovery produces a biased gap, and the system would have no way to know. Initial response was to triangulate `P_market` across multiple recovery methods (implied DCF + options-implied + analyst-estimate-implied) and take the median. This was drafted as a DECISIONS.md entry "Market belief recovery method — Phase 2 NEW" that was later reverted via `git restore` (option A — clean slate before v5). The triangulation approach was structurally sound for reducing variance but did not address the bias problem — all three methods could be systematically biased in the same direction.
+
+  2. **Precision and bucket-empirical critique (Round 2).** Michael pushed back that even with triangulation, the precision of `P_market` recovery was limited and the gap signal was noisy. A bucket-empirical baseline was considered: bin the universe by observable characteristics (size, sector, vol regime, etc.) and use the historical realized-return distribution within each bucket as the comparison baseline. This was simpler than `P_market` recovery and admitted no model-dependent inversion. But it raised a new question: if the baseline is bucket-empirical, what is the AI actually adding? The bucket baseline already incorporates "what realized returns have looked like in similar situations." The AI's job becomes "improve over the bucket-empirical baseline" — which is the right framing but suggested the architecture should make this explicit.
+
+  3. **No-baseline-action-gate reframing (Round 3 — decisive).** Michael pushed back that even a bucket-empirical baseline as the action-gate primitive admits a subtle silent failure: an AI that systematically tracks the baseline produces no incremental edge but looks well-calibrated. The fix: separate the action gate from the baseline entirely. Action is gated on **calibrated expected utility** (the AI's own forecast, shrunk by its empirical per-signal-class reliability, then converted to expected utility under Kelly). The Market-State Baseline still exists but is **isolated** — used only for diagnostic / control / attribution, never as an input to the action decision. This is the v5 framing.
+
+- **What does NOT change**:
+  - The 10 commitments except #2. #1 (evaluator load-bearing), #3 (time one-way valve), #4 (verified updates only), #5 (cognition / verification boundary), #6 (raw evidence native reasoning), #7 (intelligence in architecture), #8 (two-axis improvement), #9 (population not single agent), #10 (Michael as auditor) — all intact.
+  - Stones 1–7 (atom of inference: belief / outcome / score / properness / Brier / log / Cromwell).
+  - Stones 8–11 (calibration curves, scoreboard assembly, multi-horizon, expression-type tagging) — intact in form; per-row prose references to `P_market` / `belief_delta` updated in Phase C.
+  - Stones 16–21 (adversarial agents, ranking lock, reliability diagrams, Contract Protocol, memory schema, property tests) — intact (minor Contract field updates flow through automatically).
+  - Memory architecture (L0/L1/L2/L3 pyramid, git-backed YAML, promotion-gate four checks, deferred-feature trigger list). Promotion-gate metric definitions update to reference Forecast Ledger reliability instead of `belief_delta`.
+  - Mechanism layer (lints, hooks, import-linter, mypy strict). One new import-linter rule added: `agents/` cannot import from `baseline/`.
+  - Python 3.12 / uv / pytest / Postgres on Neon.
+  - All Phase 0 substep numbering, exit criteria, and history.
+  - The teaching cadence (concept-in-chat → distilled summary in PYRAMID → code → verify).
+
+- **Teaching is load-bearing — how PYRAMID stones get unwound and re-taught**:
+
+  The PYRAMID is how Michael builds first-principles intuition, and that intuition is what makes the auditor role (DESIGN.md #10) executable. v5 cannot be a doc-surgery exercise that deletes stones 7a / 11a / 31 from PYRAMID.md and adds replacement stones. The unwinding requires **re-teaching** where principles have shifted. The cadence for new stones is the same as Phase 0: concept in chat with concrete worked numbers in tables, Michael pushes back until it lands, then the distilled summary lands in PYRAMID.md. Phase C is a teaching pass, not a writing pass.
+
+  | Stone | Status after v5 | Action required |
+  |---|---|---|
+  | 7a (four-thing decomposition) | Removed | Replaced by new Stone 7b — the atom of forecast (realized return as the predicted object; forecast distribution as the prediction; empirical reliability as the calibration property). Teach in chat; then distill into PYRAMID.md. |
+  | 11a (market-delta scoring) | Removed | Replaced by new Stones 11b (Forecast Ledger), 11c (calibration shrinkage), 11d (tradable edge action gate). Each is a worked-table teaching, not a deletion-and-replacement. |
+  | 31 (market-implied belief recovery in toy) | Removed | Replaced by new Stone 11e — Market-State Baseline (Phase 2 NEW). Isolated control, headline observable inputs, attribution columns. Teach in chat; then distill. |
+  | 15 (synthetic-market toy) | Reframed | Was two-believer (agent + market); becomes single-believer over realized returns. The teaching rewrite is non-trivial: worked tables in PYRAMID.md demonstrate forecast-vs-realized scoring, not gap-vs-truth scoring. |
+  | 12, 13, 14 | Language updated | Process-quality, decision-quality, capacity-adjusted return all reference `P_market` / `belief_delta` in current PYRAMID prose. The CONCEPTS survive; the LANGUAGE updates to reference Forecast Ledger reliability and calibrated expected utility. |
+  | 1–11 (excluding 7a, 11a) | Intact | No re-teaching required; the atom of inference and Layer 2 measurement primitives are framing-agnostic. |
+  | 16–21 | Intact | No re-teaching required; adversarial-agent ranking, reliability diagrams, Contract Protocol, memory schema, property tests are framing-agnostic at the level taught. |
+
+  Without the re-teaching pass, the v5 doc edits would be load-bearing prose without the intuition that the auditor role requires. The teaching is what makes the architecture inspectable.
+
+- **Files to be touched** (full list across Phases A–G; ordered by phase):
+
+  Phase A (vocabulary and constitution; doc-only):
+  - DECISIONS.md (this entry — first)
+  - DEFINITIONS.md (remove `P_market`, `belief_delta`, `S_true` as state-category, "four-thing decomposition"; add Forecast Ledger, Signal Class, Signal-Class Reliability, Tradable Edge, Calibrated Expected Utility, Market-State Baseline, Track A, Track C, Incremental AI Edge, Realized Edge, Forecast Edge)
+  - DESIGN.md (rewrite commitment #2; remove four-thing decomposition section in Architectural Physics; add Forecast Ledger and Market-State Baseline sections)
+  - FORMULAS.md (remove belief-delta and four-thing formulas; add calibration shrinkage, tradable edge score, Kelly under calibrated distribution, per-signal-class reliability calculation)
+  - BIAS_PATTERNS.md (evaluate whether existing #11 "narrative as evidence" covers "trusting AI's stated confidence without empirical calibration"; add a new pattern only if the failure mode is genuinely distinct)
+  - CLAUDE.md (the "Goal" paragraph currently references "hidden-state inference, market-implied belief recovery" — needs updating alongside commitment #2; the one-sentence purpose survives intact)
+
+  Phase B (contracts and engineering; doc-only):
+  - CONTRACT.md (field restructure per Decision item 6 above)
+  - memory-design.md (repurpose L0 trajectory store as Forecast Ledger; add per-signal-class reliability views; update promotion-gate metrics)
+  - TECHNICAL.md (add Forecast Ledger schema for Postgres `forecasts` table; add signal-class reliability materialized view; add `src/fingym/baseline/` module spec; add import-linter rule `agents/` cannot import from `baseline/`; data vendor stack section)
+
+  Phase C (build plan and teaching; teach in chat first, then distill):
+  - BUILD.md (rewrite Phase 1 NEW cluster sequence under new framing; rewrite Phase 2 NEW with Market-State Baseline as a deliverable; update exit criteria)
+  - PYRAMID.md (delete stones 7a, 11a, 31; reframe stones 12, 13, 14, 15 prose; add new stones 7b, 11b, 11c, 11d, 11e — teach-in-chat-first, distill-after)
+  - PROGRESS.md (reset Phase 1 NEW cluster status to pending; update Next Action to "Cluster A under new framing"; reference Constitution v5)
+
+  Phase D (code changes):
+  - `src/fingym/toys/synthetic_market.py` (single-believer refactor; remove Stone 11a prior constants; world emits realized returns)
+  - `src/fingym/agents/contract.py` (field changes per CONTRACT.md update)
+  - `src/fingym/agents/contract_validator.py` (drop market-implied-belief checks; add forecast-distribution shape and tradable-edge-score consistency checks)
+  - `src/fingym/evaluator/scoring.py` (remove `belief_delta_on_truth`; keep `brier`, `log_score`, `reliability_buckets`)
+  - `src/fingym/toys/adversarial_agents.py` (reframe to emit forecast distributions over returns)
+  - `src/fingym/toys/contract_emitter.py` (update BayesianContractEmitter to match new Contract shape)
+  - `src/fingym/memory/schema.py` (verify still works — no changes expected)
+  - `tests/property/test_math_invariants.py` (remove belief_delta property tests)
+  - `tests/integration/test_evaluator_ranks_adversaries.py` (update adversarial agents)
+  - `tests/unit/test_contract_validator.py` (new Contract shape)
+
+  Phase E (deferred new modules — spec lands in v5; implementation is post-v5 Phase 1 NEW work):
+  - `src/fingym/ledger/` (Forecast Ledger module — spec only in v5; MVP implementation lands in Phase 1 NEW)
+  - `src/fingym/action/` (Tradable-Edge Action Engine — spec only in v5; implementation lands in Phase 1 NEW)
+  - `src/fingym/baseline/` (Market-State Baseline — spec only in v5; full implementation lands in Phase 2 NEW)
+
+  Phase F (verification): mypy strict clean; all unit / integration / property tests green; pre-commit 15 hooks clean; spot-check that DESIGN / CONTRACT / memory-design / PYRAMID read consistently cold.
+
+  Phase G (closeout):
+  - CLAUDE.md (minor session protocol updates; note Constitution v5 in source-of-truth list)
+  - PROGRESS.md (mark v5 revision complete)
+  - Git tag `v0.2` at stable post-v5 state
+
+- **Pushbacks recorded** (claims considered and rejected during the deliberation):
+
+  - **Triangulating `P_market` recovery across multiple methods** (Round 1 resolution attempt): rejected because median across three biased recoveries is still biased; the variance reduction was real but the bias problem was untouched. The reverted "Market belief recovery method — Phase 2 NEW" DECISIONS.md edit captured this intermediate framing; reasoning absorbed into the v5 entry above.
+
+  - **Bucket-empirical baseline as the action-gate primitive** (Round 2 resolution attempt): rejected because an AI that tracks the bucket baseline produces no incremental edge but looks well-calibrated. The bucket baseline IS valuable as an attribution layer, just not as the action gate. v5 keeps it (as Track C, the Market-State Baseline) but isolates it from the action decision.
+
+  - **Keeping the four-thing decomposition with `P_market` derived from the bucket baseline**: rejected because it preserved the silent-failure mode (a biased baseline produces a biased gap; no internal mechanism to detect baseline bias).
+
+  - **Letting the AI Core read the Market-State Baseline's processed forecast**: rejected because it would let the AI optimize against the baseline, defeating the attribution role. The AI receives the baseline's RAW inputs (which are public observables anyway) but never the baseline's processed forecast. Enforced by `src/fingym/agents/` cannot import from `src/fingym/baseline/`.
+
+  - **Making v5 a code-first refactor**: rejected. Phases A–C are doc-only. Code changes do not begin until Phase D. Reason: the cognition / verification boundary (DESIGN.md #5) is a documentation discipline first and a code discipline second; if we refactor code before the docs settle, we lose the audit trail of why the architecture changed. The teaching cadence requires the principle to be settled in PYRAMID before the code lands.
+
+  - **Treating v5 as a deletion-and-replacement of stones rather than a re-teaching pass**: rejected. The PYRAMID stones are the intuition substrate Michael needs to operate the audit role (DESIGN.md #10). Deleting 7a / 11a / 31 from PYRAMID.md without re-teaching the principles in chat would leave the auditor without the intuition the new framing requires. Phase C is structured as teach-then-distill, matching the Phase 0 cadence.
+
+- **Principle**: DESIGN.md #1 (evaluator load-bearing — the Forecast Ledger's per-signal-class reliability is the empirical evaluator; calibrated expected utility is the gate), #5 (cognition / verification boundary — the AI Core's cognition is free, the Forecast Ledger and Action Engine are the verifier-side calibration and gating, and the Market-State Baseline is the verifier-side control), #6 (raw evidence native reasoning — preserved without `P_market` recovery in the loop), #8 (two-axis improvement — Forecast Ledger trajectory data is fit for year-2 own-model SFT; the architecture is unchanged on this axis), #10 (Michael as auditor — Baseline attribution columns and Forecast Ledger reliability are the audit surfaces). Plus the project's primary objective: **log-wealth maximization** is what action is gated to maximize, after calibration; not Sharpe, not low drawdown, not the gap. And the project's "mechanisms over prompts" framing — the v5 architecture is enforceable at the code level (import-linter rule for Baseline isolation; Forecast Ledger as a Postgres table; calibrated expected utility computed by a typed function in `src/fingym/action/`); the v5 entry is the audit record, not load-bearing prose.
+
+---
+
 ## Open architectural questions (parked, not yet decided)
 
 ### Belief-update trigger architecture: emission-triggered vs agent-driven (2026-05)

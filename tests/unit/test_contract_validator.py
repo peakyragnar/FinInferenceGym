@@ -1,10 +1,15 @@
 """Unit tests for the contract_validator (Stone 19 / CONTRACT.md "Validation").
 
-Tests the six Phase 0 applicable validation checks. Each check has a
-passing case (validator accepts) and at least one failing case (validator
-rejects with a specific reason).
+Tests the cognition-side validation checks under Constitution v5. Each
+check has a passing case (validator accepts) and at least one failing
+case (validator rejects with a specific reason).
 
 The validator is deterministic, pure, no I/O — these tests run instantly.
+
+Verification-side checks (tradable_edge_score consistency with final_action,
+kelly_fraction coherence, cost_estimate presence for TradeAction) live in
+the Tradable-Edge Action Engine's validator (Phase 1 NEW Cluster B) and are
+tested there.
 """
 
 from __future__ import annotations
@@ -17,15 +22,12 @@ from uuid import uuid4
 import pytest
 
 from fingym.agents.contract import (
-    BeliefDelta,
-    BeliefDistribution,
     CognitiveStep,
     Contract,
     Falsifier,
-    HiddenStateHypothesis,
-    LabelPlan,
-    MarketBeliefEstimate,
+    ForecastDistribution,
     NoAction,
+    RealizedReturnPlan,
     TradeAction,
 )
 from fingym.agents.contract_validator import validate_contract
@@ -40,32 +42,29 @@ def _valid_kwargs(**overrides: Any) -> dict[str, Any]:
         "model_id": "test_model_v1",
         "prompt_version": "v1",
         "evidence_ids": [],
-        "hidden_state_hypotheses": [
-            HiddenStateHypothesis(label="strg"),
-            HiddenStateHypothesis(label="stbl"),
-            HiddenStateHypothesis(label="dec"),
-        ],
-        "ai_belief": BeliefDistribution(probabilities={"strg": 0.5, "stbl": 0.3, "dec": 0.2}),
-        "market_implied_belief": None,
-        "belief_delta": None,
+        "data_sources_used": ["toy"],
+        "forecast_distribution": ForecastDistribution(
+            probabilities={"up": 0.5, "flat": 0.3, "down": 0.2}
+        ),
+        "signal_class_id": "toy_3bucket",
+        "thesis_category": "test",
         "horizon": "12_ticks",
-        "action_or_no_action": NoAction(reason="test"),
+        "recommended_action": NoAction(reason="test"),
         "recommended_size": 0.0,
         "falsifiers": [Falsifier(description="test")],
-        "label_plan": LabelPlan(
+        "realized_return_plan": RealizedReturnPlan(
             horizon="12_ticks",
-            label_source="toy_ground_truth",
-            labelling_function="identity",
+            labelling_function="toy_realized_state_at_horizon",
         ),
         "cognitive_audit_trail": [
             CognitiveStep(
                 step_index=0,
-                initial_belief=BeliefDistribution(
-                    probabilities={"strg": 0.33, "stbl": 0.33, "dec": 0.34}
+                initial_forecast=ForecastDistribution(
+                    probabilities={"up": 0.33, "flat": 0.33, "down": 0.34}
                 ),
                 additional_reasoning="initial",
-                updated_belief=BeliefDistribution(
-                    probabilities={"strg": 0.5, "stbl": 0.3, "dec": 0.2}
+                updated_forecast=ForecastDistribution(
+                    probabilities={"up": 0.5, "flat": 0.3, "down": 0.2}
                 ),
                 action_changed=False,
             )
@@ -77,18 +76,18 @@ def _valid_kwargs(**overrides: Any) -> dict[str, Any]:
 
 
 def test_validator_accepts_well_formed_contract() -> None:
-    """A well-formed Contract passes all six Phase 0 applicable checks."""
+    """A well-formed Contract passes all cognition-side applicable checks."""
     result = validate_contract(Contract(**_valid_kwargs()))
     assert result.accepted, result.rejection_reasons
     assert result.rejection_reasons == []
 
 
-def test_validator_rejects_belief_not_summing_to_one() -> None:
-    """ai_belief.probabilities that sum to != 1.0 is rejected."""
+def test_validator_rejects_forecast_not_summing_to_one() -> None:
+    """forecast_distribution.probabilities that sum to != 1.0 is rejected."""
     contract = Contract(
         **_valid_kwargs(
-            ai_belief=BeliefDistribution(
-                probabilities={"strg": 0.5, "stbl": 0.3, "dec": 0.5}  # sums to 1.3
+            forecast_distribution=ForecastDistribution(
+                probabilities={"up": 0.5, "flat": 0.3, "down": 0.5}  # sums to 1.3
             )
         )
     )
@@ -98,10 +97,12 @@ def test_validator_rejects_belief_not_summing_to_one() -> None:
 
 
 def test_validator_rejects_cromwell_violation() -> None:
-    """ai_belief with 0.0 on a hypothesis in declared support is rejected."""
+    """forecast_distribution with 0.0 on a bucket in declared support is rejected."""
     contract = Contract(
         **_valid_kwargs(
-            ai_belief=BeliefDistribution(probabilities={"strg": 0.6, "stbl": 0.4, "dec": 0.0})
+            forecast_distribution=ForecastDistribution(
+                probabilities={"up": 0.6, "flat": 0.4, "down": 0.0}
+            )
         )
     )
     result = validate_contract(contract)
@@ -109,36 +110,12 @@ def test_validator_rejects_cromwell_violation() -> None:
     assert any("Cromwell" in r for r in result.rejection_reasons)
 
 
-def test_validator_rejects_market_without_delta() -> None:
-    """market_implied_belief set without belief_delta is rejected."""
-    contract = Contract(
-        **_valid_kwargs(
-            market_implied_belief=MarketBeliefEstimate(
-                probabilities={"strg": 0.3, "stbl": 0.3, "dec": 0.4}
-            ),
-            belief_delta=None,
-        )
-    )
+def test_validator_rejects_empty_signal_class_id() -> None:
+    """signal_class_id being empty is rejected (required for Forecast Ledger)."""
+    contract = Contract(**_valid_kwargs(signal_class_id=""))
     result = validate_contract(contract)
     assert not result.accepted
-    assert any(
-        "market_implied_belief is set but belief_delta is None" in r
-        for r in result.rejection_reasons
-    )
-
-
-def test_validator_accepts_market_with_delta() -> None:
-    """market_implied_belief AND belief_delta both set is accepted."""
-    contract = Contract(
-        **_valid_kwargs(
-            market_implied_belief=MarketBeliefEstimate(
-                probabilities={"strg": 0.3, "stbl": 0.3, "dec": 0.4}
-            ),
-            belief_delta=BeliefDelta(gaps={"strg": 0.2, "stbl": 0.0, "dec": -0.2}),
-        )
-    )
-    result = validate_contract(contract)
-    assert result.accepted, result.rejection_reasons
+    assert any("signal_class_id is empty" in r for r in result.rejection_reasons)
 
 
 def test_validator_rejects_empty_falsifiers() -> None:
@@ -149,27 +126,43 @@ def test_validator_rejects_empty_falsifiers() -> None:
     assert any("falsifiers is empty" in r for r in result.rejection_reasons)
 
 
-def test_validator_rejects_empty_label_plan_horizon() -> None:
-    """label_plan.horizon being empty string is rejected."""
+def test_validator_rejects_empty_realized_return_plan_horizon() -> None:
+    """realized_return_plan.horizon being empty string is rejected."""
     contract = Contract(
         **_valid_kwargs(
-            label_plan=LabelPlan(
+            realized_return_plan=RealizedReturnPlan(
                 horizon="",
-                label_source="toy_ground_truth",
-                labelling_function="identity",
+                labelling_function="toy_realized_state_at_horizon",
             )
         )
     )
     result = validate_contract(contract)
     assert not result.accepted
-    assert any("label_plan.horizon is empty" in r for r in result.rejection_reasons)
+    assert any("realized_return_plan.horizon is empty" in r for r in result.rejection_reasons)
+
+
+def test_validator_rejects_empty_labelling_function() -> None:
+    """realized_return_plan.labelling_function being empty is rejected."""
+    contract = Contract(
+        **_valid_kwargs(
+            realized_return_plan=RealizedReturnPlan(
+                horizon="12_ticks",
+                labelling_function="",
+            )
+        )
+    )
+    result = validate_contract(contract)
+    assert not result.accepted
+    assert any(
+        "realized_return_plan.labelling_function is empty" in r for r in result.rejection_reasons
+    )
 
 
 def test_validator_rejects_no_action_with_nonzero_size() -> None:
     """NoAction with recommended_size != 0.0 is rejected."""
     contract = Contract(
         **_valid_kwargs(
-            action_or_no_action=NoAction(reason="x"),
+            recommended_action=NoAction(reason="x"),
             recommended_size=0.5,
         )
     )
@@ -182,7 +175,7 @@ def test_validator_rejects_trade_action_with_zero_size() -> None:
     """TradeAction with recommended_size == 0.0 is rejected."""
     contract = Contract(
         **_valid_kwargs(
-            action_or_no_action=TradeAction(
+            recommended_action=TradeAction(
                 expression_type="equity-long",
                 underlying="AAPL",
                 direction="long",

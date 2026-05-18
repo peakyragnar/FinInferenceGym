@@ -65,17 +65,17 @@ Where each DESIGN.md commitment is operationalized in the build. A commitment th
 | DESIGN.md Commitment | Phase(s) | What gets built |
 |---|---|---|
 | #1 Evaluator load-bearing | 0, 1 | Scoreboard, proper scoring rules, process metrics; all columns populated and adversarially tested in Phase 1 NEW toy extension |
-| #2 Belief over hidden state | 0, 1 | State-belief scoring; market-implied belief recovery (Cluster A); gap-scoring |
+| #2 Forecast distribution over realized returns, calibrated empirically | 0, 1, 2 | Brier / log_score / reliability_buckets (Phase 0); Forecast Ledger MVP + calibration shrinkage + Tradable-Edge Action Engine (Phase 1 NEW Clusters A, B); Market-State Baseline isolation (Phase 1 NEW Cluster I); real-data versions (Phase 2 NEW) |
 | #3 Time one-way valve | 1, 2 | Toy restatement events + delisted-mid-trajectory (Phase 1 NEW Cluster E); PIT discipline + `time_leak_guard` on real data (Phase 2 NEW Stone 24) |
 | #4 Verified updates only | 1, 4 | Toy promotion gate exercises the four-check mechanism (Phase 1 NEW Cluster G); production promotion gate operates on real evidence (Phase 4) |
-| #5 Cognition/verification boundary | 0, 1 | Typed model interface; first LLM cognition with structured Contract output (Phase 1 NEW Cluster F) |
+| #5 Cognition/verification boundary | 0, 1 | Typed model interface; first LLM cognition with structured Contract output (Phase 1 NEW Cluster F); Baseline isolation enforced by import-linter (Phase 1 NEW Cluster I) |
 | #6 Raw-evidence native reasoning | 1, 2 | LLM reads toy emissions as raw text (Phase 1 NEW Cluster F); raw-evidence channel on real data (Phase 2 NEW Stone 28) |
 | #7 Intelligence in architecture | 0, 1 | Model-agnostic memory format (Phase 0); memory + promotion gate exercised end-to-end in toy (Phase 1 NEW Cluster G) |
-| #8 Two-axis improvement | 1, 2, 5 | Trajectory store with toy Contracts (Phase 1 NEW); real Contracts (Phase 2 NEW Stone 27); year-2 fine-tune plan (Phase 5) |
+| #8 Two-axis improvement | 1, 2, 5 | Trajectory store with toy v5 Contracts (Phase 1 NEW); real v5 Contracts (Phase 2 NEW Stone 27); year-2 fine-tune plan (Phase 5) |
 | #9 Population, not single agent | 1, 4 | ≥3 LLM agent variants in toy with documented diversity (Phase 1 NEW Cluster H); population on real data (Phase 4) |
 | #10 Michael as auditor only | every | Phase-gate audit by Michael; no Michael-comparison signal |
 | **Broad production universe** | 2 | ~1700+ names in analytical universe; deployment is emergent subset |
-| **Multi-horizon scoring** | 0, 1, 4 | belief_delta + reliability_buckets (Phase 0); multi-horizon labels in toy (Phase 1 NEW Cluster D); horizon-tagged skills (Phase 4) |
+| **Multi-horizon scoring** | 0, 1, 4 | reliability_buckets (Phase 0); multi-horizon realized returns in toy (Phase 1 NEW Cluster D); horizon-tagged skills (Phase 4) |
 | **Full equity-complex action space** | 1, 2 | Action layer first instantiated in toy (Phase 1 NEW Cluster B); full equity complex on real data (Phase 2 NEW onward) |
 
 If you finish a phase and any commitment cell looks empty, something has slipped.
@@ -103,7 +103,7 @@ If you finish a phase and any commitment cell looks empty, something has slipped
 
 **Domain expertise**:
 - **Proper scoring rules.** Brier vs log score, when each applies, how each behaves at tails.
-- **Calibration vs discrimination.** Two distinct dimensions of belief quality.
+- **Calibration vs discrimination.** Two distinct dimensions of forecast quality.
 - **Reliability diagrams.** Diagnostic tool for over/underconfidence by probability bucket.
 - **Process metrics vs outcome metrics.** Did the agent update on emissions vs price.
 - **Typed model-call interfaces.** Why the contract between system and model must be defined before any model is plugged in. This is the cognition/verification boundary in code.
@@ -111,17 +111,17 @@ If you finish a phase and any commitment cell looks empty, something has slipped
 
 ### Build
 
-- **Evaluator v0** — scoreboard library. Takes (belief, action, outcome) tuples and returns a vector of metrics: Brier, log score, calibration curve, process-quality flag, decision-quality score, capacity-adjusted return.
-  - **Multi-horizon scoring built in from day 1.** Each belief is paired with labels at 1m / 3m / 6m / 1y (toys may use shorter for fast iteration). The evaluator scores at all horizons in parallel and tracks per-horizon calibration separately.
+- **Evaluator v0** — scoreboard library. Takes (forecast, action, realized return) tuples and returns a vector of metrics: Brier, log score, reliability buckets, process-quality flag, decision-quality score, capacity-adjusted return.
+  - **Multi-horizon scoring built in from day 1.** Each forecast is paired with realized returns at 1m / 3m / 6m / 1y (toys may use shorter for fast iteration). The evaluator scores at all horizons in parallel and tracks per-horizon calibration separately.
   - **Action-space-aware scoring.** Each action carries an `expression_type` tag (equity-long / equity-short / option-call / option-put / option-spread / option-straddle / vol-long / vol-short / pair / no-edge). Per-expression performance tracked separately so the system can discover where edge lives.
-- **Coin toy + 3-state synthetic company toy.** Known ground truth. The evaluator is validated against these.
+- **Coin toy + 3-state synthetic company toy.** Known ground truth. The evaluator is validated against these. (The toy was originally two-believer per the pre-v5 framing; v5 collapses it to single-believer over realized returns — refactor lands in Phase 1 NEW Cluster A.)
 - **Adversarial test agents** — confidently-wrong, always-50%, well-calibrated. Verify the evaluator distinguishes them.
-- **Model interface contract** — typed I/O specification. Inputs: raw evidence. Outputs: structured terminal data (belief over state + recommended expression + sizing + horizon-of-edge + uncertainty + proposed memory updates). The contract is the same regardless of which model is plugged in.
+- **Model interface contract** — typed I/O specification. Inputs: raw evidence. Outputs: structured terminal data (forecast distribution over realized returns + signal-class tag + recommended expression + sizing + horizon-of-edge + uncertainty + proposed memory updates). The contract is the same regardless of which model is plugged in.
 - **Memory artifact schema** — versioned, model-readable format. Skills, hypotheses, observations, lessons. Specified as YAML/JSON files in a versioned registry. Schema includes horizon-tagging and expression-type-tagging fields so skills carry their domain of validity.
 
 ### DESIGN.md commitments addressed
 
-- #1 (evaluator), #2 (belief over state), #5 (cognition/verification boundary in code), #7 (memory format model-agnostic).
+- #1 (evaluator), #2 (forecast-over-realized-returns primitives — Brier, log_score, reliability_buckets), #5 (cognition/verification boundary in code), #7 (memory format model-agnostic).
 
 ### Exit criterion
 
@@ -140,73 +140,80 @@ If you finish a phase and any commitment cell looks empty, something has slipped
 
 ## Phase 1 — Toy Architecture Extension (Weeks 3–6)
 
-> Reordered 2026-05-16. Prior Phase 1 ("Data Spine + Raw-Evidence Channel") became Phase 2 NEW. See [DECISIONS.md "Constitution tightening v4: Phase 1 reorder"](DECISIONS.md#constitution-tightening-v4-2026-05-phase-1-reorder).
+> Reordered 2026-05-16 (v4) and reformulated 2026-05-18 (v5). See [DECISIONS.md "Constitution tightening v4: Phase 1 reorder"](DECISIONS.md#constitution-tightening-v4-2026-05-phase-1-reorder) and [DECISIONS.md "Constitution tightening v5"](DECISIONS.md#constitution-tightening-v5-2026-05-belief-over-realized-returns-forecast-ledger-isolated-market-state-baseline).
 
-Phase 1 NEW extends the existing 3-state synthetic-market toy ([src/fingym/toys/synthetic_market.py](src/fingym/toys/synthetic_market.py)) *upward through the full architecture* before any real data is ingested. Each architectural piece — market-implied belief recovery, action layer, cost models, multi-horizon scoring, PIT discipline + restatements + delisted analogs, LLM-driven agent, memory + promotion gate, population mechanic — gets built and validated against the toy world FIRST. Real data substitutes into the toy-trained architecture in Phase 2 NEW, one data type at a time.
+Phase 1 NEW extends the synthetic-market toy ([src/fingym/toys/synthetic_market.py](src/fingym/toys/synthetic_market.py)) *upward through the full architecture* before any real data is ingested. Each architectural piece — Forecast Ledger MVP, calibration shrinkage, Tradable-Edge Action Engine, cost models, multi-horizon scoring, PIT discipline + restatements + delisted analogs, LLM-driven agent, memory + promotion gate, population mechanic, Market-State Baseline isolation — gets built and validated against the toy world FIRST. Real data substitutes into the toy-trained architecture in Phase 2 NEW, one data type at a time.
 
-The synthetic still CANNOT validate alpha (per DESIGN.md "Three Arenas" — only real-data labels score). Phase 1 NEW validates every architectural property EXCEPT alpha. Alpha validation begins in Phase 2 NEW.
+The synthetic still CANNOT validate alpha (per DESIGN.md "Three Arenas" — only real-data realized returns score). Phase 1 NEW validates every architectural property EXCEPT alpha. Alpha validation begins in Phase 2 NEW.
 
 ### Teaching
 
 **Intuitions reinforced**:
-- [Intuition 3: The Hidden State Is the Real Object](intuitions.md#3-the-hidden-state-is-the-real-object) — extended to multi-horizon labels
+- [Intuition 4: Time Grades the Agent](intuitions.md#4-time-grades-the-agent) — extended to multi-horizon realized returns
 - [Intuition 5: Inference, Not Pattern Matching](intuitions.md#5-inference-not-pattern-matching) — first applied to a real LLM (Cluster F)
-- [Intuition 11: The Market Is a Second Believer](intuitions.md#11-the-market-is-a-second-believer) — operationalized in Cluster A
 - [Intuition 13: Time and the Two Ways to Be Wrong](intuitions.md#13-time-and-the-two-ways-to-be-wrong) — toy emits restatements (Cluster E)
 
 **Domain expertise**:
-- **Price as a compression of belief.** A market's price reflects an implied probability distribution over outcomes. Inverting price recovers `P_market`.
-- **Implied DCF + options-implied probabilities (taught at toy scale).** The toy market emits a price derived from its current belief × payoff scaling. The agent's job is to recover the belief from the price.
-- **Cost economics in trade-sizing.** Spread, impact, alpha decay; the difference between nominal edge and realized edge.
-- **Multi-horizon scoring.** Same belief, different label horizons; per-horizon calibration tracked separately.
+- **Realized returns as the predicted object.** No hidden-state categorization. The toy emits a realized return at horizon; the agent forecasts a distribution over it.
+- **Per-signal-class empirical reliability.** A Forecast Ledger records every (forecast, realized return) pair indexed by signal class and computes empirical reliability — the realized truth rate among forecasts that claimed a given probability bucket. Reliability is a measured property, not an a-priori model.
+- **Calibration shrinkage.** The agent's raw forecast is shrunk toward its per-signal-class empirical reliability before action.
+- **Calibrated expected utility and margin of safety.** Action is gated on calibrated expected utility (Kelly under the shrunk distribution) clearing a margin-of-safety threshold that absorbs costs.
+- **Market-State Baseline isolation.** A separate code path runs only on toy headline observables; its forecast is hidden from the AI Core; attribution columns measure incremental AI edge.
+- **Cost economics in trade-sizing.** Spread, impact, alpha decay; the difference between nominal calibrated expected utility and realized edge.
+- **Multi-horizon scoring.** Same forecast pipeline, different realized-return horizons; per-horizon reliability tracked separately.
 - **Restatements + delisting.** What changes when `as_known(t) ≠ as_known(t+k)`; what happens when a name disappears mid-trajectory.
-- **LLM-as-agent.** Reading raw evidence as text; emitting a Contract that the validator accepts.
+- **LLM-as-agent.** Reading raw evidence as text; emitting a v5 Contract that the validator accepts.
 - **Memory promotion mechanism (not yet memory content).** The four-check gate as plumbing, exercised against toy-generated memory proposals.
 - **Population mechanics.** Multiple LLM variants, scored in parallel, with documented diversity.
 
 ### Build
 
-Eight clusters, each ~3-4 tight sub-stones (concept-in-chat → code → verify, same texture as Phase 0). ~24-27 sub-stones total.
+Nine clusters, each ~3-4 tight sub-stones (concept-in-chat → code → verify, same texture as Phase 0). ~27-30 sub-stones total.
 
-**Cluster A — Market-implied belief recovery (Stone 31)**. Toy market emits a price each tick, derived from its current belief × payoff scaling. Agent reads the price stream and inverts to recover `P_market`. Wires `market_implied_belief` + `belief_delta` into Contracts emitted by this richer toy. Validator accepts.
+**Cluster A — Single-believer toy refactor + Forecast Ledger MVP (Stones 7b, 11b)**. Toy emits realized returns at horizon (single-believer; the prior two-believer setup is gone). Forecast Ledger records each (forecast, realized return) pair indexed by signal class. Per-signal-class reliability is computed empirically over many forecasts and stored as a derived view of the data spine.
 
-**Cluster B — Action layer + decision quality (Stones 13, 32)**. Agent picks long / short / NoAction from belief + gap. Stone 13 coherence checks fire (belief monotone with evidence; sizing monotone with gap). Decision-quality column populated on the scoreboard.
+**Cluster B — Calibration shrinkage + Tradable-Edge Action Engine (Stones 11c, 11d)**. Calibration shrinkage applies per-signal-class reliability to the agent's raw forecast to produce `F_AI_calibrated`. The Action Engine computes calibrated expected utility (Kelly under the shrunk distribution) and gates action on a margin-of-safety threshold. Action selection (long / short / NoAction) follows the gate. `calibrated_expected_utility`, `tradable_edge_score`, and the action-gate verdict become scoreboard columns.
 
-**Cluster C — Cost models + capacity (Stone 14)**. Per-name toy liquidity + spread + impact + alpha decay. `realized_edge` column on the scoreboard distinguishes nominal-edge agents from realized-edge agents.
+**Cluster C — Cost models + capacity (Stone 14)**. Per-name toy liquidity + spread + impact + alpha decay. `realized_edge` column on the scoreboard distinguishes nominal calibrated expected utility from realized edge after costs.
 
-**Cluster D — Multi-horizon scoring (Stone 10 code)**. Toy emits labels at multiple tick horizons (e.g., 1-tick / 5-tick / 20-tick). One Contract scored at all horizons in parallel. Per-horizon calibration tracked separately. Reliability diagrams support horizon filtering.
+**Cluster D — Multi-horizon scoring (Stone 10 code)**. Toy emits realized returns at multiple tick horizons (e.g., 1-tick / 5-tick / 20-tick). One v5 Contract scored at all horizons in parallel. Per-horizon reliability tracked separately in the Forecast Ledger. Reliability diagrams support horizon filtering.
 
-**Cluster E — PIT discipline + restatements + delisted analogs (Stones 24, 26 in toy)**. Toy emits restatement events: an emission can be issued at `as_of=t` with subsequent restated emission at `as_known=t+k` carrying a different value. Toy companies "delist" mid-trajectory (the emission stream terminates; subsequent labels still arrive at known horizons for evaluation). `time_leak_guard` fires structurally on the toy emission stream.
+**Cluster E — PIT discipline + restatements + delisted analogs (Stones 24, 26 in toy)**. Toy emits restatement events: an emission can be issued at `as_of=t` with subsequent restated emission at `as_known=t+k` carrying a different value. Toy companies "delist" mid-trajectory (the emission stream terminates; subsequent realized returns still arrive at known horizons for evaluation). `time_leak_guard` fires structurally on the toy emission stream.
 
-**Cluster F — LLM-driven agent (Stone 30, first instantiation)**. First real LLM (Anthropic SDK; `claude-opus-4-7` or comparable). The LLM reads toy emissions as text and emits Contracts. `contract_validator` accepts the LLM's output. Single agent only; population comes in Cluster H.
+**Cluster F — LLM-driven agent (Stone 30, first instantiation)**. First real LLM (Anthropic SDK; `claude-opus-4-7` or comparable). The LLM reads toy emissions as text and emits v5 Contracts (forecast distribution over realized returns + signal-class tag + action + sizing). `contract_validator` accepts the LLM's output. Single agent only; population comes in Cluster H.
 
-**Cluster G — Memory + promotion gate (Stones 39, 40 in toy)**. The LLM agent emits `memory_update_proposal` fields. The toy promotion gate runs the four checks (held-out replay calibration improvement; live calibration probationary; process discipline; cross-model regression). Proposed → L2 → L3 transitions exercised on the toy `memory_registry/`. Promoted L3 skills read at session start by LLM agents.
+**Cluster G — Memory + promotion gate (Stones 39, 40 in toy)**. The LLM agent emits `memory_update_proposal` fields. The toy promotion gate runs the four checks (held-out replay reliability improvement; live calibration probationary; process discipline; cross-model regression). Proposed → L2 → L3 transitions exercised on the toy `memory_registry/`. Promoted L3 skills read at session start by LLM agents.
 
-**Cluster H — Population mechanic (Stone 38 in toy)**. ≥3 LLM-agent variants varying in (prior × prompt × memory subset). Scored in parallel. Documented diversity in beliefs and actions.
+**Cluster H — Population mechanic (Stone 38 in toy)**. ≥3 LLM-agent variants varying in (prior × prompt × memory subset). Scored in parallel. Documented diversity in forecasts and actions.
+
+**Cluster I — Market-State Baseline isolation (Stone 11e in toy)**. Toy headline observables (simulated rates / vol / FX-like tick streams) feed a separate `src/fingym/baseline/` module. The Baseline emits its own forecast distribution over realized returns using only those observables. Code-level isolation: `src/fingym/agents/` cannot import from `src/fingym/baseline/` (import-linter rule). The AI Core sees the raw observables the Baseline consumes; it never sees the Baseline's processed forecast. Incremental AI edge column on the scoreboard = AI realized edge minus Baseline realized edge. Validates the isolation pattern in toy mode before real observables substitute in Phase 2 NEW.
 
 ### DESIGN.md commitments addressed
 
 - #1 (evaluator load-bearing — all scoreboard columns populated and tested against adversarial agents in the extended toy)
-- #2 (belief over hidden state — extended with market-implied belief; gap is the load-bearing scoring direction)
-- #5 (cognition / verification boundary — LLM cognition for the first time; structured Contract output is the only thing scored)
+- #2 (forecast distribution over realized returns, calibrated empirically — Forecast Ledger calibration, Tradable-Edge Action Engine gate, isolated Market-State Baseline all exercised in toy mode)
+- #5 (cognition / verification boundary — LLM cognition for the first time; structured Contract output is the only thing scored; Baseline isolation enforced at code level)
 - #6 (raw-evidence native reasoning — LLM reads toy emissions as text, no pre-engineered features)
 - #7 (intelligence in architecture — memory + promotion gate exercised at the mechanism level)
 - #9 (population — ≥3 LLM agents in parallel with documented diversity)
 
 ### Exit criterion
 
-- All scoreboard columns populated (Brier, log_score, belief_delta_on_truth, decision_quality, realized_edge, reliability_buckets, mean_gap_on_truth); each tested against adversarial agents in the extended toy.
-- LLM-driven agent produces valid Contracts (`contract_validator` accepts).
+- All scoreboard columns populated (Brier, log_score, reliability_buckets, per-signal-class reliability, calibrated_expected_utility, tradable_edge_score, realized_edge after costs, incremental_AI_edge over Baseline); each tested against adversarial agents in the extended toy.
+- LLM-driven agent produces valid v5 Contracts (`contract_validator` accepts).
 - Toy promotion gate produces L2 → L3 promotions on the toy `memory_registry/`; LLM agents read promoted skills at session start.
-- Population of ≥3 LLM agents runs in parallel with documented diversity in beliefs and actions.
-- Trajectory store schema instantiated with toy Contracts; ready for the year-2 SFT format.
-- All Phase 0 tests still green; mypy strict clean across all source files.
+- Population of ≥3 LLM agents runs in parallel with documented diversity in forecasts and actions.
+- Toy Market-State Baseline runs in code-level isolation; `agents/` cannot import from `baseline/` (import-linter rule enforced); incremental AI edge column populated.
+- Trajectory store schema instantiated with toy v5 Contracts; ready for the year-2 SFT format.
+- All Phase 0 surviving tests still green; mypy strict clean across all source files.
 
 ### Slippage watch
 
 - **Synthetic-scores-promote-skills.** Are toy promotion-gate outputs being treated as evidence that a skill generalizes? **NO.** The toy gate validates the MECHANISM. No toy-promoted skill enters production L3 memory. (DESIGN.md "Three Arenas," DECISIONS.md "Worldlets — FUTURE RESEARCH NOT COMMITTED.")
 - **Pre-engineered features creeping into the LLM agent (Cluster F).** Is the LLM receiving anything pre-digested instead of raw toy emissions as text? No. Raw emissions only. (DESIGN.md #6.)
 - **Templating the LLM's reasoning.** Is the prompt forcing an 11-step reasoning skeleton? No — the Contract IS the constraint; cognition is free. (DECISIONS.md "Constitution tightening v2," rejected synthesis-style 11-step prompt skeleton.)
+- **Trusting AI stated confidence without empirical calibration (Cluster B).** Is the Action Engine operating on the agent's raw forecast, or on the calibration-shrunk forecast? Must be the shrunk forecast. The Forecast Ledger's per-signal-class reliability is the non-negotiable input to the gate. (DESIGN.md commitment #2.)
+- **Agent reading the Baseline's processed forecast (Cluster I).** Is any code path in `src/fingym/agents/` importing from `src/fingym/baseline/`? Must not — the import-linter rule fires structurally. The AI sees raw observables the Baseline consumes, not the Baseline's processed forecast. (DESIGN.md commitment #2; new failure mode added to DESIGN.md Failure Modes table.)
 - **Single-model lock-in (Cluster F).** Does the LLM-driven agent code path embed model-specific quirks? No. Cluster F uses Anthropic for first instantiation, but Cluster H must spawn variants under at least one alternative model (or, at minimum, vary prompt/memory subset over the same model to prove the architecture admits diversity).
 - **Skipping cluster discipline.** Each cluster is 3-4 tight sub-stones with concept-in-chat → code → verify. Are we tempted to fuse clusters into one big jump? No — that's how Phase 1 originally drifted into 1700-transcript ingest. Tight stones only.
 - **Vendor decisions sneaking in.** Are vendor (SEC EDGAR, FMP, Massive, Norgate) decisions creeping into Phase 1 NEW? No — defer to Phase 2 NEW. The Anthropic API key (Cluster F) is the only external integration.
@@ -228,10 +235,11 @@ Phase 2 NEW substitutes real data into the toy-trained architecture, **one data 
 
 **Domain expertise**:
 - **Point-in-time data at production scale.** Real `as_of` / `as_known` mismatches; SEC EDGAR XBRL filings; restatement-event handling on real GE-style events.
-- **Vendor evaluation — refined post-smoke-test.** Why no single vendor solves all three (prices + fundamentals + transcripts + delisted). SEC EDGAR for PIT fundamentals; Massive for prices (with delisted-coverage caveat); existing FMP-derived transcript corpus.
+- **Vendor evaluation — refined post-smoke-test.** Why no single vendor solves all (prices + fundamentals + transcripts + delisted + headline observables). SEC EDGAR for PIT fundamentals; Massive for prices (with delisted-coverage caveat); existing FMP-derived transcript corpus; FRED for macro headline observables.
+- **Headline observable inputs for the Market-State Baseline.** Rates (FRED), realized + implied vol, FX, commodities — the exact source list defines the Baseline's domain of operation. Anything outside this list is not a headline observable; allowing the Baseline to consume non-headline inputs blurs the attribution layer.
 - **Live-feed parity.** Replay and live must produce byte-identical outputs for the same as-of date.
 - **Survivorship bias at scale.** Why the transcript corpus is survivorship-biased; how to cross-reference SEC EDGAR for delisted CIKs.
-- **The raw-evidence channel.** What the model sees in production: full transcripts, full filings, peer data, macro — never pre-digested.
+- **The raw-evidence channel.** What the model sees in production: full transcripts, full filings, peer data, macro headline observables — never pre-digested. The AI Core consumes the same headline observables the Baseline consumes (raw), but never the Baseline's processed forecast.
 
 ### Build
 
@@ -249,14 +257,17 @@ Real-data substitution proceeds stone-by-stone. The previously-Phase-1 deliverab
 
 **Stone 27 — Trajectory store with real Contracts**. Schema migrated from toy; sample reads/writes cleanly. Each record tagged with horizon and expression-type. The transcript corpus is preserved with full speaker-turn structure so it's available for year-2 fine-tuning.
 
-**Stone 28 — Raw-evidence channel operational**. Typed pipe delivers full unprocessed evidence (transcripts, filings, prices, fundamentals) to a model on demand for any in-scope name. No feature extraction at this layer.
+**Stone 28 — Raw-evidence channel operational**. Typed pipe delivers full unprocessed evidence (transcripts, filings, prices, fundamentals, headline observables) to a model on demand for any in-scope name. No feature extraction at this layer.
+
+**Stone 11e (real-data) — Market-State Baseline on real observables**. The `src/fingym/baseline/` module (isolated in Phase 1 NEW Cluster I against toy observables) substitutes real headline observables (FRED rates, vol indices, FX, commodities). Code-level isolation continues to hold: `agents/` cannot import from `baseline/`. Incremental AI edge column on the scoreboard now measures real attribution: was the AI's edge from its cognition on raw evidence, or from headline observables anyone has? The Baseline's processed forecast remains hidden from the AI Core; only the raw observables are shared.
 
 ### DESIGN.md commitments addressed
 
+- #2 (forecast distribution over realized returns, calibrated empirically — Forecast Ledger and Market-State Baseline operate on real data; calibration shrinkage uses real per-signal-class reliability)
 - #3 (time one-way valve — at production scale)
 - #6 (raw-evidence native reasoning — the channel that makes it possible, now on real data)
 - #7 (model-agnostic data format)
-- #8 (trajectory store in SFT-fit format with real Contracts)
+- #8 (trajectory store in SFT-fit format with real v5 Contracts)
 
 ### Exit criterion
 
@@ -264,7 +275,8 @@ Real-data substitution proceeds stone-by-stone. The previously-Phase-1 deliverab
 - Transcript corpus QA complete; either passed clean or scoped to a clean subset with documentation.
 - Replay matches live byte-for-byte across multiple sample dates.
 - Delisted shadow universe (SEC EDGAR-sourced for pre-2024) is ingested and queryable.
-- Trajectory store contains real Contracts and reads cleanly.
+- Trajectory store contains real v5 Contracts and reads cleanly.
+- Market-State Baseline runs on real headline observables; incremental AI edge column populated on real data; import-linter rule still fires structurally on attempted imports from `agents/` into `baseline/`.
 - All Phase 1 NEW tests still green; mypy strict clean.
 
 ### Slippage watch
@@ -275,6 +287,7 @@ Real-data substitution proceeds stone-by-stone. The previously-Phase-1 deliverab
 - **Skipping QA.** Are we tempted to skip Stone 22 corpus QA and start ingesting? No. Dirty data poisons everything downstream.
 - **Trajectory format compromise.** Is the trajectory store missing something needed for year-2 SFT? Fix in Phase 2, not later.
 - **Architecture drift.** Is real data forcing changes to the Phase-1-NEW-trained architecture? If yes, pause and investigate — the toy was supposed to exercise this. Architecture changes here mean the toy missed something; document the gap in DECISIONS.md before changing the architecture.
+- **Baseline observable creep.** Is the Market-State Baseline being fed non-headline-observable inputs (anything beyond rates, vol, FX, commodities) to "improve its accuracy"? No. The Baseline's input set defines its domain of operation; broadening it blurs the attribution layer. If real data has a candidate observable that's borderline, document the decision in DECISIONS.md before adding.
 
 ---
 
@@ -297,9 +310,9 @@ Real-data substitution proceeds stone-by-stone. The previously-Phase-1 deliverab
 
 - **Live operation** of model-driven agent (pure-code agent continues in parallel for plumbing parity verification only).
 - **Memory activation** — agent can write proposed memory items into the registry. Items are flagged "proposed" — they do not yet affect the agent's future inference because the promotion gate (Phase 4) hasn't been applied. We are *only* collecting candidate memory at this stage.
-- **Full logging** — every input, belief, action, score in the trajectory store with full provenance.
-- **Calibration diagnostics dashboard** — daily reliability diagram, Brier rolling average, process-quality flag.
-- **No Michael comparison.** Agent's outputs are scored only against time-revealed labels. (DESIGN.md #10.)
+- **Full logging** — every input, forecast, calibrated forecast, action, realized return, score in the trajectory store with full provenance.
+- **Calibration diagnostics dashboard** — daily reliability diagram, Brier rolling average, per-signal-class reliability table, process-quality flag, incremental AI edge over Baseline.
+- **No Michael comparison.** Agent's outputs are scored only against realized returns. (DESIGN.md #10.)
 
 ### DESIGN.md commitments addressed
 
@@ -395,7 +408,7 @@ Real-data substitution proceeds stone-by-stone. The previously-Phase-1 deliverab
 
 ### Exit criterion
 
-- System has measurable edge vs market baseline on at least one decision class, after costs and capacity adjustment.
+- System has measurable incremental AI edge over the Market-State Baseline (Track C) on at least one decision class, after costs and capacity adjustment.
 - Model swap test passed: system functions and maintains calibration under each tested model.
 - Year-2 plan documented and approved by Layer 5 audit.
 

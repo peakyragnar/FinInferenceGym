@@ -1,23 +1,29 @@
 """contract_validator.py — gates Contracts at the cognition/verification boundary.
 
-The validator runs the Phase 0 applicable checks from CONTRACT.md
-"Validation". A Contract that fails any check is rejected — recorded as a
-verifier-rejection in the operational log, not scored, not persisted to the
-trajectory store. This is DESIGN.md #5 in code: the agent can propose any
-output, but only valid Contracts enter the system.
+The validator runs the applicable cognition-side checks from CONTRACT.md
+"Validation" (v5). A Contract that fails any check is rejected — recorded
+as a verifier-rejection in the operational log, not scored, not persisted
+to the trajectory store. This is DESIGN.md #5 in code: the agent can
+propose any cognition output, but only valid Contracts enter the system.
+
+Verification-side checks (Phase 1 NEW Cluster B onward) — coherence
+between `final_action`, `tradable_edge_score`, `kelly_fraction_applied`,
+and the engine's `calibrated_forecast` — live in `src/fingym/action/`
+once the Tradable-Edge Action Engine ships. This file enforces only the
+cognition-side checks.
 
 The validator is intentionally separate from the pydantic types in
 contract.py. The types enforce SHAPE (presence of required fields, basic
-type constraints); the validator enforces SEMANTIC INVARIANTS (belief sums
-to 1, falsifiers non-empty, NoAction iff size == 0, etc.).
+type constraints); the validator enforces SEMANTIC INVARIANTS (forecast
+sums to 1, falsifiers non-empty, NoAction iff size == 0, etc.).
 
-Phase 0 applicable checks (this file):
-  1. ai_belief is a valid probability distribution (sums to ~1, no negative
-     values, no zero values on hypotheses in the declared support).
-  2. If market_implied_belief is set, belief_delta must also be set.
+Phase 0 + Phase 1 NEW cognition-side checks (this file):
+  1. forecast_distribution is a valid probability distribution (sums to ~1,
+     no negative values, no zero values on the declared support).
+  2. signal_class_id is non-empty.
   3. falsifiers is non-empty.
-  4. label_plan declares at least one horizon.
-  5. recommended_size == 0.0 iff action_or_no_action is NoAction.
+  4. realized_return_plan declares a horizon.
+  5. recommended_size == 0.0 iff recommended_action is NoAction.
   6. cognitive_audit_trail has at least one entry.
 
 Phase 1+ adds (deferred — emission table doesn't exist yet at Phase 0):
@@ -29,9 +35,9 @@ from dataclasses import dataclass
 
 from fingym.agents.contract import Contract, NoAction, TradeAction
 
-# Tolerance on belief-distribution sum. Pydantic accepts any list of floats;
+# Tolerance on forecast-distribution sum. Pydantic accepts any dict of floats;
 # the validator allows tiny numerical noise around exactly 1.0.
-_BELIEF_SUM_TOLERANCE = 1e-3
+_FORECAST_SUM_TOLERANCE = 1e-3
 
 
 @dataclass(frozen=True)
@@ -49,7 +55,7 @@ class ValidationResult:
 
 
 def validate_contract(contract: Contract) -> ValidationResult:
-    """Run the Phase 0 applicable validation checks on a Contract.
+    """Run the applicable cognition-side validation checks on a Contract.
 
     Returns ValidationResult.accepted = True if all checks pass. Otherwise
     returns accepted = False with a list of rejection_reasons. Each reason
@@ -60,54 +66,47 @@ def validate_contract(contract: Contract) -> ValidationResult:
     """
     reasons: list[str] = []
 
-    _check_ai_belief_distribution(contract, reasons)
-    _check_market_and_delta_coherence(contract, reasons)
+    _check_forecast_distribution(contract, reasons)
+    _check_signal_class_id(contract, reasons)
     _check_falsifiers_non_empty(contract, reasons)
-    _check_label_plan_horizon(contract, reasons)
+    _check_realized_return_plan(contract, reasons)
     _check_action_size_coherence(contract, reasons)
     _check_cognitive_audit_trail(contract, reasons)
 
     return ValidationResult(accepted=not reasons, rejection_reasons=reasons)
 
 
-def _check_ai_belief_distribution(contract: Contract, reasons: list[str]) -> None:
-    probs = contract.ai_belief.probabilities
+def _check_forecast_distribution(contract: Contract, reasons: list[str]) -> None:
+    probs = contract.forecast_distribution.probabilities
     if not probs:
-        reasons.append("ai_belief.probabilities is empty")
+        reasons.append("forecast_distribution.probabilities is empty")
         return
 
     total = sum(probs.values())
-    if abs(total - 1.0) > _BELIEF_SUM_TOLERANCE:
+    if abs(total - 1.0) > _FORECAST_SUM_TOLERANCE:
         reasons.append(
-            f"ai_belief.probabilities sums to {total:.6f}, not 1.0 "
-            f"(tolerance {_BELIEF_SUM_TOLERANCE})"
+            f"forecast_distribution.probabilities sums to {total:.6f}, not 1.0 "
+            f"(tolerance {_FORECAST_SUM_TOLERANCE})"
         )
 
     negatives = [label for label, p in probs.items() if p < 0.0]
     if negatives:
-        reasons.append(f"ai_belief.probabilities has negative values for: {negatives}")
+        reasons.append(f"forecast_distribution.probabilities has negative values for: {negatives}")
 
-    # Cromwell: hypotheses declared in the support must have strictly
-    # positive probability. (Probabilities outside the declared support
-    # are not penalised here; the agent may freely place 0 on hypotheses
-    # it considers structurally absent.)
-    declared_labels = {h.label for h in contract.hidden_state_hypotheses}
-    cromwell_violations = [label for label in declared_labels if probs.get(label, 0.0) == 0.0]
+    # Cromwell: values declared in the support must have strictly positive
+    # probability. The agent may freely place 0 on values it considers
+    # structurally absent (i.e., outside its declared support, by omission).
+    cromwell_violations = [label for label, p in probs.items() if p == 0.0]
     if cromwell_violations:
         reasons.append(
-            f"ai_belief assigns 0 to hypotheses in the declared support "
+            f"forecast_distribution assigns 0 to values in the declared support "
             f"(Cromwell violation): {cromwell_violations}"
         )
 
 
-def _check_market_and_delta_coherence(contract: Contract, reasons: list[str]) -> None:
-    market_set = contract.market_implied_belief is not None
-    delta_set = contract.belief_delta is not None
-    if market_set and not delta_set:
-        reasons.append(
-            "market_implied_belief is set but belief_delta is None "
-            "(when market is present, the gap must be computed)"
-        )
+def _check_signal_class_id(contract: Contract, reasons: list[str]) -> None:
+    if not contract.signal_class_id:
+        reasons.append("signal_class_id is empty (required for Forecast Ledger reliability lookup)")
 
 
 def _check_falsifiers_non_empty(contract: Contract, reasons: list[str]) -> None:
@@ -117,13 +116,15 @@ def _check_falsifiers_non_empty(contract: Contract, reasons: list[str]) -> None:
         )
 
 
-def _check_label_plan_horizon(contract: Contract, reasons: list[str]) -> None:
-    if not contract.label_plan.horizon:
-        reasons.append("label_plan.horizon is empty")
+def _check_realized_return_plan(contract: Contract, reasons: list[str]) -> None:
+    if not contract.realized_return_plan.horizon:
+        reasons.append("realized_return_plan.horizon is empty")
+    if not contract.realized_return_plan.labelling_function:
+        reasons.append("realized_return_plan.labelling_function is empty")
 
 
 def _check_action_size_coherence(contract: Contract, reasons: list[str]) -> None:
-    action = contract.action_or_no_action
+    action = contract.recommended_action
     size = contract.recommended_size
     if isinstance(action, NoAction):
         if size != 0.0:

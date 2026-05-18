@@ -34,19 +34,60 @@ Driver and modeling:
 Schema corresponds 1:1 with the six data types from DESIGN.md:
 - `emissions`
 - `derived_evidence`
-- `beliefs`
+- `forecasts`
 - `actions`
-- `labels`
+- `realized_returns`
 - `scores`
 
 The `derived_evidence` table is **not created at Phase 0**. The constitutional slot exists (DESIGN.md Layer 0); the table is added in the migration alongside the first concrete derived-evidence artifact (e.g., transcript speaker-turn extraction in Phase 1). The slot exists; the table arrives with a need. Per DESIGN.md, anything labeled "score," "rank," "premium," "factor," "signal," or "quality" is not derived evidence — enforced by `mechanisms/lints/no_alpha_features.py`.
 
 Plus operational tables:
-- `trajectory` (append-only stream of belief/action/outcome records)
+- `trajectory` (append-only stream of forecast/action/realized-return records)
 - `vendor_imports` (raw ingest log)
 - `promotion_log` (skill promotion / rejection history)
+- `headline_observables` (rates, vol, FX, commodities — the Market-State Baseline's input table; also readable by the AI Core)
+
+Plus the **Forecast Ledger view** — a Postgres materialized view `forecast_ledger_reliability` that joins `forecasts` (with `signal_class_id` column) and `realized_returns` (joined on `(name, horizon, expression-type)`), bucketed by claimed probability bucket and signal class, aggregating empirical realized truth-rate over rolling windows. Refreshed nightly or on-demand. Read by the Tradable-Edge Action Engine at decision time for calibration shrinkage. Writes never go to the view directly — only through normal `forecasts` and `realized_returns` table inserts.
 
 Memory artifacts live as **YAML files in `memory_registry/` in git** — versioned via git for audit history, not in Postgres. This is deliberate: skill provenance and human review benefit from git's diff/blame history. The full memory architecture (four-tier L0-L3 pyramid, schema, promotion gate, deferral list, and the research that produced it) is documented in **[memory-design.md](memory-design.md)**. This section gives only the engineering pointers; the architectural decisions live there.
+
+## v5 component modules
+
+Three modules introduced by Constitution v5 (see [DECISIONS.md "Constitution tightening v5"](DECISIONS.md)). Specifications land in v5 revision; implementations land in Phase 1 NEW (`ledger/`, `action/`, toy `baseline/`) and Phase 2 NEW (real-data `baseline/`).
+
+### Forecast Ledger module — `src/fingym/ledger/`
+
+Maintains the per-signal-class empirical reliability view computed over the `forecasts` and `realized_returns` tables. The Forecast Ledger is the empirical anchor for calibration: it answers "when this agent has historically claimed X% confidence in signal class Y, what fraction of those forecasts realized the claimed bucket?"
+
+- **Reads from**: `forecasts`, `realized_returns` (via `data/`).
+- **Writes**: never directly. The view is refreshed from base-table inserts.
+- **Read API**: `reliability_for_signal_class(signal_class_id, claimed_bucket) -> empirical_rate`. Called by the Tradable-Edge Action Engine at decision time.
+- **Refresh**: scheduled nightly job or on-demand via `refresh_reliability_view()`.
+- **Trajectory store role**: the same `forecasts` + `realized_returns` tables that feed the Ledger also serve as the trajectory store for year-2 SFT (DESIGN.md #8). The Ledger is a derived analytical view over the trajectory data.
+
+### Tradable-Edge Action Engine module — `src/fingym/action/`
+
+Converts raw agent forecasts into gated actions via calibration shrinkage + Kelly under cost-aware margin-of-safety threshold.
+
+- **Reads from**: `agents/` (Contract type only — for the raw forecast), `ledger/` (`reliability_for_signal_class`), `data/` (cost / spread / impact models).
+- **Writes**: the `action` field of the Contract (or a sibling `calibrated_action` record on the Contract).
+- **Pipeline**:
+  1. Read raw `F_AI` from Contract.
+  2. Read `reliability_for_signal_class` from Ledger for this `signal_class_id`.
+  3. Shrink `F_AI` toward empirical reliability → `F_AI_calibrated`.
+  4. Compute calibrated expected utility under Kelly using `F_AI_calibrated` and the cost model.
+  5. Apply margin-of-safety threshold: if calibrated expected utility clears threshold → emit `TradeAction`; else → `NoAction`.
+- **Does NOT** import from `evaluator/` (the gate is forward-acting; scoring is a separate concern).
+
+### Market-State Baseline module — `src/fingym/baseline/`
+
+Structurally isolated control. Produces forecast distributions over realized returns using only headline observable inputs. The AI Core never sees the Baseline's processed forecast; the audit layer uses it to compute incremental AI edge attribution columns.
+
+- **Reads from**: `data/` — exclusively the `headline_observables` table (rates, vol, FX, commodities). No other inputs.
+- **Writes**: rows in `forecasts` table tagged `agent_id = 'baseline'` (or a sibling table; final schema decided when the module ships).
+- **Isolation**: `src/fingym/agents/` cannot import from `src/fingym/baseline/`. Enforced by `import-linter` rule (added below). The AI Core consumes the same `headline_observables` table raw, but never imports the Baseline's processed forecast.
+- **Attribution**: the evaluator computes `incremental_AI_edge = AI realized edge − Baseline realized edge` per `(name, horizon, expression-type)` from the rows both produce. This is an audit column, not an action input.
+- **Input set is load-bearing**: rates, vol, FX, commodities. Broadening this set blurs the attribution layer; see BUILD.md Phase 2 NEW slippage watch "Baseline observable creep."
 
 ## Model interface contract
 
@@ -54,7 +95,7 @@ The structured terminal output that every agent emits is the `Contract` object s
 
 A model output that does not land in a valid `Contract` is rejected at the verifier gate, not scored, and recorded as a verifier-rejection in the operational log. This is the code-level enforcement of DESIGN.md #5 (cognition / verification boundary) at the agent boundary.
 
-The trajectory store (per DESIGN.md #8) writes one row per `Contract` with full provenance and the `cognitive_audit_trail` field preserved. The trail captures (initial belief, additional reasoning iterations, updated belief, action change) per cognitive step, which the Phase 4 VOI mechanism reads to compute "did more thinking change the action?" Capturing the trail is a Phase 0 design requirement; the VOI mechanism that consumes it is Phase 4.
+The trajectory store (per DESIGN.md #8) writes one row per `Contract` with full provenance and the `cognitive_audit_trail` field preserved. The trail captures (initial forecast, additional reasoning iterations, updated forecast, action change) per cognitive step, which the Phase 4 VOI mechanism reads to compute "did more thinking change the action?" Capturing the trail is a Phase 0 design requirement; the VOI mechanism that consumes it is Phase 4.
 
 ## LLM swap layer
 
@@ -105,8 +146,10 @@ FinInferenceGym/
 │   ├── evaluator/
 │   ├── data/
 │   ├── memory/
-│   ├── beliefs/
 │   ├── agents/
+│   ├── ledger/                # v5 — Forecast Ledger (Phase 1 NEW)
+│   ├── action/                # v5 — Tradable-Edge Action Engine (Phase 1 NEW)
+│   ├── baseline/              # v5 — Market-State Baseline; isolated from agents/ (Phase 1 NEW toy; Phase 2 NEW real)
 │   ├── llm/
 │   └── cli/
 │
@@ -164,17 +207,24 @@ Per the harness-engineering principle: **enforce quality with mechanisms, not pr
 ### Architectural import boundaries (import-linter)
 
 ```
-data/      ←   evaluator/, beliefs/, agents/, cli/        (one-way: data is read by upper layers)
-evaluator/ ←   agents/, cli/
-beliefs/   ←   agents/, cli/
+# Allowed imports (one-way: data is read by upper layers; the v5 gate flows agents → action → ledger; baseline runs in parallel)
+
+data/      ←   evaluator/, agents/, ledger/, action/, baseline/, cli/
+agents/    ←   action/, cli/                                       (action consumes the Contract type)
+ledger/    ←   action/, evaluator/, cli/                           (action calls reliability_for_signal_class; evaluator reads for diagnostics)
 memory/    ←   agents/, cli/
 llm/       ←   agents/, cli/
 
-forbidden:
-  data/     →  beliefs/, evaluator/, agents/, llm/, memory/
-  evaluator/→  agents/, beliefs/, llm/, memory/
-  llm/      →  anything outside src/fingym/llm/
+# Forbidden (load-bearing isolation rules)
+
+  agents/    →   evaluator/, action/, ledger/, baseline/    (cognition cannot reach the verifier, the gate, the calibration ledger, or the baseline — DESIGN.md #5 + #2)
+  baseline/  →   agents/, evaluator/, action/, ledger/, memory/, llm/   (the Baseline is isolated; reads ONLY data/.headline_observables — DESIGN.md #2)
+  evaluator/ →   agents/, action/, llm/, memory/
+  data/      →   evaluator/, agents/, ledger/, action/, baseline/, llm/, memory/
+  llm/       →   anything outside src/fingym/llm/
 ```
+
+The `agents/ ↛ baseline/` and `baseline/ ↛ agents/` rules are the load-bearing v5 isolation: the AI Core consumes the same raw `headline_observables` the Baseline consumes, but it never sees the Baseline's processed forecast.
 
 ## Deployment path
 

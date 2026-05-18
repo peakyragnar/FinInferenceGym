@@ -1,11 +1,11 @@
 """reliability_diagrams.py — Stone 18 visual exit criterion for Phase 0.
 
 Generates an HTML reliability-diagram figure for the three adversarial
-agents (ConfidentAgent, UniformAgent, BayesianAgent) plus the market.
-Per-state pooling: for each agent and each (episode, tick, state) triple
-across N episodes, records (claim = P_AI(state), outcome = 1 if truth ==
-state else 0). Buckets the claims and plots (mean_claim, observed_rate)
-per bucket against the 45° calibration line.
+agents (ConfidentAgent, UniformAgent, BayesianAgent). Per-state pooling:
+for each agent and each (episode, tick, state) triple across N episodes,
+records (claim = agent's claimed P(state), outcome = 1 if truth == state
+else 0). Buckets the claims and plots (mean_claim, observed_rate) per
+bucket against the 45° calibration line.
 
 Expected visual shapes (PYRAMID.md Stone 18, BUILD.md Phase 0 exit):
 
@@ -16,8 +16,12 @@ Expected visual shapes (PYRAMID.md Stone 18, BUILD.md Phase 0 exit):
     levels.
   - BayesianAgent: many buckets populated, points close to the
     diagonal — discrimination AND calibration.
-  - Market: similar shape to BayesianAgent; both are Bayesian believers
-    using the toy's true likelihoods, differing only in starting prior.
+
+Under Constitution v5 the pre-v5 "Market" parallel agent was removed
+from this demo (it was a Stone 11a parallel believer used to compute
+the belief-delta gap; the v5 framing isolates the Market-State Baseline
+in its own module — `src/fingym/baseline/` — and the reliability diagrams
+focus on per-agent calibration).
 
 Run: `uv run python -m fingym.toys.reliability_diagrams`
 
@@ -35,6 +39,7 @@ from plotly.subplots import make_subplots
 
 from fingym.evaluator.scoring import ReliabilityBucket, reliability_buckets
 from fingym.toys.adversarial_agents import (
+    DEFAULT_BAYESIAN_PRIOR,
     Agent,
     BayesianAgent,
     ConfidentAgent,
@@ -42,8 +47,6 @@ from fingym.toys.adversarial_agents import (
 )
 from fingym.toys.synthetic_market import (
     STATES,
-    STONE_11A_AGENT_PRIOR,
-    STONE_11A_MARKET_PRIOR,
     CompanyState,
     sample_emission,
 )
@@ -60,7 +63,7 @@ def collect_per_state_predictions(
     """Run N episodes; gather per-state (claim, outcome) pairs per agent.
 
     For each agent and each (episode, tick, state) triple, records:
-      - claim: P_AI[state] at that tick
+      - claim: agent's claimed P(state) at that tick
       - outcome: 1 if that episode's truth was `state`, else 0
 
     Per-state pooling gives 3 predictions per agent per tick. Across
@@ -74,7 +77,6 @@ def collect_per_state_predictions(
         "ConfidentAgent(decaying, p=0.95)",
         "UniformAgent",
         "BayesianAgent",
-        "Market",
     ]
     per_agent: dict[str, tuple[list[float], list[int]]] = {name: ([], []) for name in agent_names}
 
@@ -84,9 +86,8 @@ def collect_per_state_predictions(
 
         confident = ConfidentAgent("decaying", confidence=0.95)
         uniform = UniformAgent()
-        bayesian = BayesianAgent(STONE_11A_AGENT_PRIOR, name="BayesianAgent")
-        market = BayesianAgent(STONE_11A_MARKET_PRIOR, name="Market")
-        all_actors: list[Agent] = [confident, uniform, bayesian, market]
+        bayesian = BayesianAgent(DEFAULT_BAYESIAN_PRIOR, name="BayesianAgent")
+        all_actors: list[Agent] = [confident, uniform, bayesian]
 
         rng = random.Random(episode_seed)
         for _ in range(n_emissions_per_episode):
@@ -144,20 +145,18 @@ def render_reliability_html(
         "ConfidentAgent(decaying, p=0.95)",
         "UniformAgent",
         "BayesianAgent",
-        "Market",
     ]
 
     fig: Any = make_subplots(
-        rows=2,
-        cols=2,
+        rows=1,
+        cols=3,
         subplot_titles=agent_order,
-        horizontal_spacing=0.12,
-        vertical_spacing=0.18,
+        horizontal_spacing=0.10,
     )
 
     for idx, name in enumerate(agent_order):
-        row = idx // 2 + 1
-        col = idx % 2 + 1
+        row = 1
+        col = idx + 1
         buckets = reliability[name]
 
         # 45° calibration reference line

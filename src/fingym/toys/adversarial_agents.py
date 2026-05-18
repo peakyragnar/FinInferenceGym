@@ -17,8 +17,8 @@ The three personas (PYRAMID.md Stone 16):
     useless even if its belief is technically a valid probability
     distribution.
 
-  - BayesianAgent — wraps the same Bayes update used by `run_two_believers`
-    in synthetic_market.py. The well-calibrated baseline. Should win every
+  - BayesianAgent — wraps the same Bayes update used by `update()` in
+    synthetic_market.py. The well-calibrated baseline. Should win every
     column it is qualified to win, across many episodes.
 
 The deliberately-broken agents (ConfidentAgent, UniformAgent) ignore
@@ -28,8 +28,16 @@ limit case the scoreboard must catch.
 
 Step 1 of Stone 16: this module defines the Agent protocol and the three
 concrete classes, plus an introduction demo that prints each agent's
-belief before and after one emission. Steps 2-4 (single-episode scoring,
-multi-episode aggregation, inflection check) land in subsequent edits.
+belief before and after one emission. Multi-episode scoring lands in
+`aggregate_n_episodes` and the integration test in
+`tests/integration/test_evaluator_ranks_adversaries.py`.
+
+Constitution v5 (2026-05-18) removed the pre-v5 Stone 11a market-belief
+parallel agent and the `belief_delta_on_truth` gap column. The v5
+single-believer-over-realized-returns refactor lands in Phase 1 NEW
+Cluster A; this module retains the three adversarial agents (which are
+framework primitives) and ranks them by Brier and log_score against
+the toy's three-state realized outcome.
 
 Run: `uv run python -m fingym.toys.adversarial_agents`
 """
@@ -38,17 +46,23 @@ import random
 from dataclasses import dataclass
 from typing import Protocol
 
-from fingym.evaluator.scoring import belief_delta_on_truth, brier, log_score
+from fingym.evaluator.scoring import brier, log_score
 from fingym.toys.synthetic_market import (
     STATES,
-    STONE_11A_AGENT_PRIOR,
-    STONE_11A_MARKET_PRIOR,
     Belief,
     CompanyState,
     Emission,
     sample_emission,
     update,
 )
+
+# Standard prior used by the BayesianAgent in demos and tests. Picks
+# "strengthening" as the modal hypothesis without going into Cromwell territory.
+DEFAULT_BAYESIAN_PRIOR: Belief = {
+    "strengthening": 0.55,
+    "stable": 0.30,
+    "decaying": 0.15,
+}
 
 
 class Agent(Protocol):
@@ -117,10 +131,9 @@ class UniformAgent:
 class BayesianAgent:
     """Updates belief via Bayes on each emission, using the toy's likelihoods.
 
-    Same shape as the Bayesian believer in `run_two_believers`. Starts from
-    a user-supplied prior and updates with `synthetic_market.update`, which
-    multiplies prior by likelihood and renormalises. Honest, calibrated,
-    Cromwell-respecting.
+    Starts from a user-supplied prior and updates with
+    `synthetic_market.update`, which multiplies prior by likelihood and
+    renormalises. Honest, calibrated, Cromwell-respecting.
     """
 
     def __init__(self, prior: Belief, name: str = "BayesianAgent") -> None:
@@ -150,7 +163,7 @@ def print_agent_introductions() -> None:
     """
     confidently_wrong = ConfidentAgent("decaying", confidence=0.95)
     uniform = UniformAgent()
-    bayesian = BayesianAgent(STONE_11A_AGENT_PRIOR, name="BayesianAgent(Stone 11a prior)")
+    bayesian = BayesianAgent(DEFAULT_BAYESIAN_PRIOR, name="BayesianAgent")
 
     agents: list[Agent] = [confidently_wrong, uniform, bayesian]
 
@@ -188,34 +201,29 @@ def print_single_episode_demo(
     n_emissions: int = 12,
     seed: int = 42,
 ) -> None:
-    """Run three adversarial agents plus the market through one episode.
+    """Run the three adversarial agents through one episode.
 
     Truth defaults to `strengthening` so the ConfidentAgent (which is
     confident on `decaying`) ends the episode confidently wrong on truth.
-    The Bayesian agent uses the Stone 11a agent prior (leans strengthening),
-    the market uses the Stone 11a market prior (leans decaying).
+    The Bayesian agent uses the default prior (leans strengthening).
 
     Two outputs:
-      - Per-tick belief on the truth state for all four (agents + market).
-        You can read down the column to see the trajectory.
-      - End-of-episode scoreboard at tick `n_emissions` — Brier, log_score,
-        and belief_delta_on_truth (vs the market) for each agent.
+      - Per-tick belief on the truth state for all three agents.
+      - End-of-episode scoreboard at tick `n_emissions` — Brier and
+        log_score for each agent.
     """
     rng = random.Random(seed)
 
     confident = ConfidentAgent("decaying", confidence=0.95)
     uniform = UniformAgent()
-    bayesian = BayesianAgent(STONE_11A_AGENT_PRIOR, name="BayesianAgent")
-    market = BayesianAgent(STONE_11A_MARKET_PRIOR, name="Market")
+    bayesian = BayesianAgent(DEFAULT_BAYESIAN_PRIOR, name="BayesianAgent")
 
     agents: list[Agent] = [confident, uniform, bayesian]
 
     print(f"\nSingle episode — truth = {truth}, n_emissions = {n_emissions}, seed = {seed}")
     print(f"Each column is the agent's P({truth}) — its allocation on the truth state.")
     traj_header = (
-        f"{'tick':>4} | {'emission':<8} | "
-        f"{'Confident':>9} | {'Uniform':>8} | "
-        f"{'Bayesian':>9} | {'Market':>8}"
+        f"{'tick':>4} | {'emission':<8} | {'Confident':>9} | {'Uniform':>8} | {'Bayesian':>9}"
     )
     print(traj_header)
     print("-" * len(traj_header))
@@ -223,38 +231,29 @@ def print_single_episode_demo(
         f"{0:>4} | {'(prior)':<8} | "
         f"{confident.belief[truth]:>9.3f} | "
         f"{uniform.belief[truth]:>8.3f} | "
-        f"{bayesian.belief[truth]:>9.3f} | "
-        f"{market.belief[truth]:>8.3f}"
+        f"{bayesian.belief[truth]:>9.3f}"
     )
 
     for i in range(1, n_emissions + 1):
         e = sample_emission(truth, rng)
         for a in agents:
             a.observe(e)
-        market.observe(e)
         print(
             f"{i:>4} | {e:<8} | "
             f"{confident.belief[truth]:>9.3f} | "
             f"{uniform.belief[truth]:>8.3f} | "
-            f"{bayesian.belief[truth]:>9.3f} | "
-            f"{market.belief[truth]:>8.3f}"
+            f"{bayesian.belief[truth]:>9.3f}"
         )
 
     print(f"\nEnd-of-episode scoreboard (tick {n_emissions}, truth = {truth})")
-    sb_header = (
-        f"{'agent':<32} | "
-        f"{'P_AI(truth)':>11} | {'Brier':>7} | {'log_score':>9} | {'gap on truth':>12}"
-    )
+    sb_header = f"{'agent':<32} | {'P_agent(truth)':>14} | {'Brier':>7} | {'log_score':>9}"
     print(sb_header)
     print("-" * len(sb_header))
-    market_belief = market.belief
-    all_actors: list[Agent] = [confident, uniform, bayesian, market]
-    for a in all_actors:
+    for a in agents:
         b = a.belief
         br = brier(b, truth)
         ls = log_score(b, truth)
-        gap = belief_delta_on_truth(b, market_belief, truth)
-        print(f"{a.name:<32} | {b[truth]:>11.3f} | {br:>7.3f} | {ls:>9.3f} | {gap:>+12.3f}")
+        print(f"{a.name:<32} | {b[truth]:>14.3f} | {br:>7.3f} | {ls:>9.3f}")
 
 
 @dataclass(frozen=True)
@@ -269,7 +268,6 @@ class AgentMeans:
     name: str
     mean_brier: float
     mean_log_score: float
-    mean_gap: float
     n_episodes: int
 
 
@@ -282,8 +280,7 @@ def aggregate_n_episodes(
 
     Each episode picks a random truth uniformly over the 3 states, uses a
     fresh emission seed (`base_seed + episode_idx + 1`), and scores each
-    agent's final belief against the chosen truth via Brier, log_score,
-    and belief_delta_on_truth (vs the market's belief).
+    agent's final belief against the chosen truth via Brier and log_score.
 
     Deterministic — same arguments produce the exact same results. This
     function is the data source for both `run_multi_episode_demo` (printed
@@ -298,10 +295,9 @@ def aggregate_n_episodes(
         "ConfidentAgent(decaying, p=0.95)",
         "UniformAgent",
         "BayesianAgent",
-        "Market",
     ]
     raw_scores: dict[str, dict[str, list[float]]] = {
-        name: {"brier": [], "log_score": [], "gap": []} for name in agent_names
+        name: {"brier": [], "log_score": []} for name in agent_names
     }
 
     for episode_idx in range(n_episodes):
@@ -311,9 +307,8 @@ def aggregate_n_episodes(
 
         confident = ConfidentAgent("decaying", confidence=0.95)
         uniform = UniformAgent()
-        bayesian = BayesianAgent(STONE_11A_AGENT_PRIOR, name="BayesianAgent")
-        market = BayesianAgent(STONE_11A_MARKET_PRIOR, name="Market")
-        all_actors: list[Agent] = [confident, uniform, bayesian, market]
+        bayesian = BayesianAgent(DEFAULT_BAYESIAN_PRIOR, name="BayesianAgent")
+        all_actors: list[Agent] = [confident, uniform, bayesian]
 
         rng = random.Random(episode_seed)
         for _ in range(n_emissions_per_episode):
@@ -321,19 +316,16 @@ def aggregate_n_episodes(
             for a in all_actors:
                 a.observe(e)
 
-        market_belief = market.belief
         for a in all_actors:
             b = a.belief
             raw_scores[a.name]["brier"].append(brier(b, truth))
             raw_scores[a.name]["log_score"].append(log_score(b, truth))
-            raw_scores[a.name]["gap"].append(belief_delta_on_truth(b, market_belief, truth))
 
     per_agent: dict[str, AgentMeans] = {
         name: AgentMeans(
             name=name,
             mean_brier=sum(raw_scores[name]["brier"]) / n_episodes,
             mean_log_score=sum(raw_scores[name]["log_score"]) / n_episodes,
-            mean_gap=sum(raw_scores[name]["gap"]) / n_episodes,
             n_episodes=n_episodes,
         )
         for name in agent_names
@@ -373,17 +365,12 @@ def run_multi_episode_demo(
     truth_dist = ", ".join(f"{state}: {count}" for state, count in truth_counts.items())
     print(f"Truth distribution across episodes: {truth_dist}")
 
-    header = f"{'agent':<32} | {'mean Brier':>10} | {'mean log_sc':>11} | {'mean gap':>10}"
+    header = f"{'agent':<32} | {'mean Brier':>10} | {'mean log_sc':>11}"
     print(header)
     print("-" * len(header))
 
     for means in per_agent.values():
-        print(
-            f"{means.name:<32} | "
-            f"{means.mean_brier:>10.3f} | "
-            f"{means.mean_log_score:>11.3f} | "
-            f"{means.mean_gap:>+10.3f}"
-        )
+        print(f"{means.name:<32} | {means.mean_brier:>10.3f} | {means.mean_log_score:>11.3f}")
 
 
 if __name__ == "__main__":

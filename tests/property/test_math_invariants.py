@@ -2,7 +2,7 @@
 
 Hypothesis-based property tests covering the architectural-physics
 functions: Bayesian update, Brier and log_score scoring rules, and the
-Stone 11a market-delta scoring. These are the "physics" of the verifier
+reliability bucketer. These are the "physics" of the verifier
 (DESIGN.md "Architectural Physics" + #5 cognition/verification boundary;
 "the verifier may encode physics, not alpha"). Properties tested here
 should hold mechanically — if any fail, the verifier is broken.
@@ -22,14 +22,15 @@ Properties tested (one or more per primitive):
   Log score (multi-class):
     - Properness in expectation: same property, different metric.
 
-  belief_delta_on_truth (Stone 11a):
-    - Signed inverse: gap(P_AI, P_market, t) == -gap(P_market, P_AI, t).
-    - Sum across states: sum of belief_delta across all states is zero
-      (because both distributions sum to 1).
-
   reliability_buckets (Stone 8 / Stone 18):
     - Count invariant: the sum of `count` over all returned buckets
       equals the number of input claim/outcome pairs.
+
+The pre-v5 `belief_delta_on_truth` properties (signed inverse and
+cross-state sum-to-zero) were removed by the Constitution v5 cleanup
+pass (2026-05-18) alongside the function itself. New v5 property tests
+for the Forecast Ledger reliability view and calibration shrinkage land
+when those stones are taught (Stones 11b, 11c).
 
 The smoke subset is the Phase 0 substep 8 deliverable. If any test
 fails, Phase 0 cannot exit.
@@ -45,7 +46,6 @@ from hypothesis import strategies as st
 
 from fingym.evaluator.scoring import (
     ReliabilityBucket,
-    belief_delta_on_truth,
     brier,
     log_score,
     reliability_buckets,
@@ -182,52 +182,6 @@ def test_log_score_is_proper_in_expectation(q: dict[str, float], r: dict[str, fl
     assert e_log_q <= e_log_r + 1e-9, (
         f"Log_score properness violated: E[log(q)]={e_log_q} > E[log(r)]={e_log_r} + tol"
     )
-
-
-# ---------------------------------------------------------------------------
-# belief_delta_on_truth — signed inverse and sum-to-zero.
-# ---------------------------------------------------------------------------
-
-
-@given(
-    p_ai=generic_belief_3state(),
-    p_market=generic_belief_3state(),
-    truth=generic_outcome,
-)
-def test_belief_delta_is_signed_inverse(
-    p_ai: dict[str, float],
-    p_market: dict[str, float],
-    truth: str,
-) -> None:
-    """gap(P_AI, P_market, t) == -gap(P_market, P_AI, t).
-
-    The gap is the signed difference P_AI(t) - P_market(t). Swapping
-    the arguments must negate the sign.
-    """
-    forward = belief_delta_on_truth(p_ai, p_market, truth)
-    reverse = belief_delta_on_truth(p_market, p_ai, truth)
-    assert math.isclose(forward, -reverse, abs_tol=1e-9), (
-        f"belief_delta signed-inverse violated: forward={forward}, reverse={reverse}"
-    )
-
-
-@given(
-    p_ai=generic_belief_3state(),
-    p_market=generic_belief_3state(),
-)
-def test_belief_delta_across_states_sums_to_zero(
-    p_ai: dict[str, float],
-    p_market: dict[str, float],
-) -> None:
-    """sum_s gap(P_AI, P_market, s) == 0 across all states in the support.
-
-    Both belief distributions sum to 1, so their per-state differences
-    must sum to 0. This is the algebraic identity behind "agent's extra
-    probability on one state is matched by less probability on others"
-    (see Stone 11a teaching).
-    """
-    total = sum(belief_delta_on_truth(p_ai, p_market, s) for s in _GENERIC_STATES)
-    assert math.isclose(total, 0.0, abs_tol=1e-9), f"belief_delta cross-state sum != 0: {total}"
 
 
 # ---------------------------------------------------------------------------

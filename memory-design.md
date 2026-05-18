@@ -35,7 +35,7 @@ This document is loaded at session start when memory-related work is on the tabl
 
 A terminology clarification, because most public LLM-memory research is about a different use case:
 
-In FinInferenceGym, **memory is not user-session memory, not chat continuity, not personalization**. It is the system's **accumulated validated knowledge about how state translates to emissions in equity markets**. Memory items are structured hypotheses — claims like *"customer concentration > 15% predicts margin compression with 60% probability in subsequent year"* — with explicit domain-of-validity tags, justification chains, and audit history.
+In FinInferenceGym, **memory is not user-session memory, not chat continuity, not personalization**. It is the system's **accumulated validated knowledge about how raw evidence predicts realized returns in equity markets**. Memory items are structured hypotheses — claims like *"customer concentration above 15% in mid-cap software predicts negative 6-month realized returns with empirical reliability of 0.62 over the rolling window"* — with explicit domain-of-validity tags, justification chains, and audit history.
 
 This is closer to a hedge fund's research knowledge base than to a chat agent's user memory. Most 2026 LLM-agent-memory research targets the chat-agent / coding-agent / personal-assistant use case; it required filtering for what actually applies to us.
 
@@ -47,7 +47,7 @@ This is closer to a hedge fund's research knowledge base than to a chat agent's 
 
 | Tier | What lives there | Storage | Retrievable into agent context? |
 |---|---|---|---|
-| **L0 — Trajectory store** | Raw beliefs, actions, labels, scores per agent run with full provenance (`as_of`, `as_known`, `source`, `version`) | Postgres tables, append-only, alembic-versioned schema | No — never retrieved into future agent context (FMP defense, DESIGN.md #6). Queryable by structured criteria. |
+| **L0 — Trajectory store** | Raw forecasts, calibrated forecasts, actions, realized returns, scores per agent run with full provenance (`as_of`, `as_known`, `source`, `version`). Also the input to the Forecast Ledger view (per-signal-class empirical reliability). | Postgres tables, append-only, alembic-versioned schema | No — never retrieved into future agent context (FMP defense, DESIGN.md #6). Queryable by structured criteria. |
 | **L1 — Observation atoms** | Agent's mid-session structured notes ("AAPL Q3 transcript mentioned 'pricing pressure' 7 times"). Foreign-keyed to L0 rows. | Postgres `observations` table, append-only | No — never retrieved into future agent context. |
 | **L2 — Probationary hypotheses** | Structured claims under validation by the promotion gate | YAML files in `memory_registry/probationary/` | No — not until promoted. |
 | **L3 — Promoted skills** | Validated, gated, model-agnostic skills the agent reads at session start | YAML files in `memory_registry/promoted/` | **Yes — read directly into context. No retrieval layer.** |
@@ -109,10 +109,10 @@ An L2 artifact promotes to L3 only after passing all four:
 
 | Check | What it verifies | DESIGN.md reference |
 |---|---|---|
-| **Held-out replay calibration** | Adding this artifact to the agent's context improves calibration on a held-out set of trajectories the artifact was NOT derived from | DESIGN.md #4 |
-| **Cross-model regression** | The calibration improvement holds when the agent uses a different model (≥2 model engines validated) | DESIGN.md #7 |
+| **Held-out replay reliability** | Adding this artifact to the agent's context improves per-signal-class reliability (Forecast Ledger view) on a held-out set of trajectories the artifact was NOT derived from. Reliability change is computed per signal class affected by the artifact. | DESIGN.md #4 + #2 |
+| **Cross-model regression** | The reliability improvement holds when the agent uses a different model (≥2 model engines validated) | DESIGN.md #7 |
 | **Survivorship check** | If the artifact uses transcript-derived signals, it still calibrates against the delisted shadow universe | DESIGN.md "Operational Constraints" |
-| **Domain-of-validity declared** | The artifact specifies which horizons, expression types, sectors, and time ranges it applies to | BUILD.md, Phase 4 spec |
+| **Domain-of-validity declared** | The artifact specifies which horizons, expression types, sectors, time ranges, AND signal classes it applies to | BUILD.md, Phase 4 spec |
 
 Failing any check → artifact stays in L2 (probationary) for further validation, or is retired with an audit-trail entry. Passing all four → artifact moves to `memory_registry/promoted/` with a git commit recording the promotion.
 
@@ -217,13 +217,13 @@ Summary of what we read and what we took from each, in roughly descending order 
 | Commitment | How the lean MVP preserves it |
 |---|---|
 | **#1 Evaluator load-bearing** | Promotion gate gates all writes to L3 (inference-affecting memory). Gate runs on the evaluator. |
-| **#2 Belief over hidden state** | Memory artifacts are claims about how state translates to emissions — explicitly state-centric. |
+| **#2 Forecast distribution over realized returns, calibrated empirically** | Memory artifacts are claims about how evidence predicts realized returns — explicitly forecast-centric. The Forecast Ledger (a derived view of L0) computes per-signal-class reliability; the promotion gate's held-out reliability check uses it. Artifacts declare the signal classes they touch. |
 | **#3 Time one-way valve** | L0 is point-in-time with `as_of` / `as_known`. Drill-down always honors as-of dates. Restated facts go in with their own `as_known`; derived artifacts reference specific L0 row IDs. |
-| **#4 Verified updates only** | The promotion gate (held-out replay + cross-model + survivorship + domain-of-validity) is exactly this commitment in code. |
-| **#5 Cognition/verification boundary** | Agent writes proposals (L1, L2); system runs the gate and decides what enters L3. Agent never gates its own writes. Code-level: `src/fingym/agents/` will not import from `src/fingym/evaluator/`. |
-| **#6 Raw-evidence native reasoning** | Agent reads L3 (validated lessons) AND can drill to L0 (raw evidence) on demand. L1-L3 are aids to navigation, not filters. No vector RAG over agent-writable stores. |
+| **#4 Verified updates only** | The promotion gate (held-out reliability + cross-model + survivorship + domain-of-validity) is exactly this commitment in code. |
+| **#5 Cognition/verification boundary** | Agent writes proposals (L1, L2); system runs the gate and decides what enters L3. Agent never gates its own writes. Code-level: `src/fingym/agents/` will not import from `src/fingym/evaluator/`, `src/fingym/action/`, `src/fingym/ledger/`, or `src/fingym/baseline/`. |
+| **#6 Raw-evidence native reasoning** | Agent reads L3 (validated lessons) AND can drill to L0 (raw evidence) on demand. L1-L3 are aids to navigation, not filters. No vector RAG over agent-writable stores. The agent also reads the same raw `headline_observables` the Market-State Baseline consumes, but never the Baseline's processed forecast. |
 | **#7 Intelligence in architecture, model-agnostic memory** | YAML / markdown is model-agnostic. Survives model swap. Cross-model regression check at promotion enforces this. |
-| **#8 Two-axis improvement** | L0 trajectory store is the SFT-fit data spine. Year-2 own-model fine-tune reads from L0 (and labels and audit trail of memory artifacts). |
+| **#8 Two-axis improvement** | L0 trajectory store is the SFT-fit data spine. Year-2 own-model fine-tune reads from L0 (forecasts, realized returns, scores, audit trail of memory artifacts). |
 | **#9 Population, not single agent** | Each agent variant proposes memory artifacts; promotion gate validates against held-out data. Multiple variants compete on the evaluator scoreboard. |
 | **#10 Michael as auditor** | Drill-down audit chain L3 → L2 → L1 → L0 + git history of every artifact + audit-trail field. Auditability is structural. |
 
@@ -264,7 +264,9 @@ Both experiments are designed so the decision is empirical, not architectural. I
 | L2 artifacts (probationary) | `memory_registry/probationary/<uuid>.yaml` |
 | L3 artifacts (promoted) | `memory_registry/promoted/<uuid>.yaml` |
 | Retired artifacts | `memory_registry/retired/<uuid>.yaml` |
-| L0 trajectory tables | Postgres: `beliefs`, `actions`, `labels`, `scores` |
+| L0 trajectory tables | Postgres: `forecasts`, `actions`, `realized_returns`, `scores` |
+| Forecast Ledger view | Postgres materialized view: `forecast_ledger_reliability` (joins `forecasts` and `realized_returns` for per-signal-class reliability) |
+| Headline observables table | Postgres: `headline_observables` (Market-State Baseline input; readable by AI Core) |
 | L1 observation table | Postgres: `observations` |
 | Promotion-gate code | `src/fingym/evaluator/promotion_gate.py` (Phase 4 deliverable) |
 | Agent memory reader | `src/fingym/agents/memory_reader.py` (Phase 2 deliverable) |
@@ -284,8 +286,9 @@ Both experiments are designed so the decision is empirical, not architectural. I
 ### Scale expectations
 
 - Memory artifacts: 10s at end of Phase 0, 100s by end of Phase 4, perhaps low 1000s by year 2. Not a scale problem for YAML-in-git.
-- Trajectory rows: ~272K belief records per pass through the universe × N agent variants × multiple revalidation passes. Millions of rows by year 1. Postgres territory with deliberate indexing.
-- L1 observation atoms: similar order to belief records.
+- Trajectory rows: ~272K forecast records per pass through the universe × N agent variants × multiple revalidation passes × multiple horizons. Millions of rows by year 1. Postgres territory with deliberate indexing.
+- L1 observation atoms: similar order to forecast records.
+- Forecast Ledger reliability view: a small derived view (buckets × signal classes × rolling windows). Cheap to refresh; refreshed nightly or on-demand.
 
 ---
 

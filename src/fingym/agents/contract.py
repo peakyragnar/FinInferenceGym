@@ -7,15 +7,18 @@ rejected at the verifier gate (contract_validator.py), not scored, and
 recorded as a verifier-rejection in the operational log.
 
 This file defines the pydantic model for the Contract and all nested types
-required at Phase 0. Deferred fields (cost_model, slippage_model, capacity,
-payoff_distribution, etc.) are NOT yet present; they will be added as
-Optional fields when their consuming machinery ships (Phase 2+). See
-CONTRACT.md "Deferred fields" for the full triggers table.
+required at Phase 0 + Phase 1 NEW under Constitution v5. Cognition fields
+are populated by the agent (AI Core); verification fields are populated by
+the Tradable-Edge Action Engine (Phase 1 NEW Cluster B). Deferred fields
+(payoff_distribution, cost_estimate, capacity_estimate, etc.) are NOT yet
+present; they will be added as Optional fields when their consuming
+machinery ships. See CONTRACT.md "Deferred fields" for the full triggers
+table.
 
 Validation rules live in contract_validator.py, not on the pydantic types.
 The types enforce shape (types, required-ness); the validator enforces
-semantic invariants (belief sums to 1, falsifiers non-empty, NoAction iff
-size == 0, etc.).
+semantic invariants (forecast sums to 1, falsifiers non-empty, NoAction iff
+size == 0, tradable_edge_score consistent with final_action, etc.).
 """
 
 from datetime import datetime
@@ -44,56 +47,21 @@ class EvidenceRef(BaseModel):
     source: str
 
 
-class HiddenStateHypothesis(BaseModel):
-    """One element of the hypothesis space the agent reasons over.
+class ForecastDistribution(BaseModel):
+    """Probability distribution over realized returns (Constitution v5).
 
-    The model defines its own hypothesis space — no fixed ontology
-    (DESIGN.md Layer 2). Coarse states (healthy / deteriorating / fraud)
-    and fine-grained states are equally valid.
-    """
+    `probabilities` maps each bucket label (or parametric-shape parameter name)
+    to its probability. Pydantic enforces shape (dict of str -> float);
+    validation that the distribution is well-formed (sums to 1, no negative
+    values, Cromwell) lives in contract_validator.py.
 
-    model_config = ConfigDict(frozen=True)
-
-    label: str
-    description: str = ""
-
-
-class BeliefDistribution(BaseModel):
-    """Probability distribution over the hypothesis space.
-
-    `probabilities` maps each hypothesis label to its probability. Pydantic
-    enforces shape (dict of str -> float); validation that the distribution
-    is well-formed (sums to 1, no negative values, Cromwell) lives in
-    contract_validator.py.
+    Replaces the pre-v5 `BeliefDistribution` (which was over a hypothesis
+    space of states). Under v5 the support is over realized returns directly.
     """
 
     model_config = ConfigDict(frozen=True)
 
     probabilities: dict[str, float]
-
-
-class MarketBeliefEstimate(BaseModel):
-    """Estimate of the market's belief over the same hypothesis space.
-
-    Recovered by inverting price / options / spreads (Stone 31, Phase 2+).
-    None at Phase 0 toys without a market. Same shape as BeliefDistribution.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    probabilities: dict[str, float]
-
-
-class BeliefDelta(BaseModel):
-    """Signed gap P_AI(s) - P_market(s) per state (Stone 11a).
-
-    Derived from ai_belief and market_implied_belief. The evaluator focuses
-    on belief_delta[S_true] — the gap on the realized truth.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    gaps: dict[str, float]
 
 
 # Expression categories — Stone 11. Broad category only; trade specifics
@@ -150,7 +118,7 @@ ActionOrNoAction = Annotated[TradeAction | NoAction, Field(discriminator="action
 
 
 class Falsifier(BaseModel):
-    """A future observation that would prove the belief wrong.
+    """A future observation that would prove the forecast wrong.
 
     Required: at least one per Contract. A Contract with no falsifiers is
     unfalsifiable narrative, not a scoreable claim (BIAS_PATTERNS.md #11 —
@@ -163,32 +131,32 @@ class Falsifier(BaseModel):
     pattern: str | None = None  # optional structured form for machine-check
 
 
-class LabelPlan(BaseModel):
-    """Which labels at which horizons will score this Contract.
+class RealizedReturnPlan(BaseModel):
+    """Which realized returns at which horizons will score this Contract.
 
-    Phase 0 (toy): label_source = "toy_ground_truth", labelling_function =
-    "identity", proxies = []. Phase 1+: real labelling function over proxy
-    observations from the data spine.
+    Constitution v5: replaces the pre-v5 `LabelPlan`. The labelling function
+    is the rule that turns future price + corporate actions + payoff
+    structure into the realized return at horizon. Phase 0 toy:
+    `labelling_function = "toy_realized_return"`. Phase 2+: real labelling
+    function over price / corporate-action / payoff-structure data.
 
-    The labelling function is a HYPOTHESIS about how state translates to
-    emissions (PYRAMID Stone 2). Choosing it is alpha-adjacent design;
-    different functions produce different labels for the same future.
+    Choosing the labelling function is a load-bearing design choice —
+    different functions produce different realized returns for the same
+    future. PYRAMID Stone 2 (label, practically) discusses this.
     """
 
     model_config = ConfigDict(frozen=True)
 
     horizon: str
-    label_source: str
     labelling_function: str
-    proxies: list[str] = Field(default_factory=list)
-    thresholds: dict[str, float] = Field(default_factory=dict)
+    return_type: Literal["simple", "log", "expression-specific"] = "simple"
     point_in_time_anchor: datetime | None = None
 
 
 class CognitiveStep(BaseModel):
     """One iteration of agent reasoning (Phase 4 VOI input).
 
-    Phase 0 has one step per Contract (initial_belief == updated_belief,
+    Phase 0 has one step per Contract (initial_forecast == updated_forecast,
     no iteration). Phase 4 reads this trail to compute "did more thinking
     change the action?"
     """
@@ -196,9 +164,9 @@ class CognitiveStep(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     step_index: int = Field(ge=0)
-    initial_belief: BeliefDistribution
+    initial_forecast: ForecastDistribution
     additional_reasoning: str
-    updated_belief: BeliefDistribution
+    updated_forecast: ForecastDistribution
     action_changed: bool
 
 
@@ -226,15 +194,19 @@ class MemoryUpdateProposal(BaseModel):
 class Contract(BaseModel):
     """The structured terminal output every agent emits.
 
-    The cognition/verification boundary in code. A model output that does
-    not conform to this shape is rejected at the verifier gate (handled by
-    contract_validator.py).
+    The cognition/verification boundary in code under Constitution v5.
+    Cognition fields are populated by the agent (AI Core); verification
+    fields are populated by the Tradable-Edge Action Engine (Phase 1 NEW
+    Cluster B). A model output that does not conform to this shape is
+    rejected at the verifier gate (handled by contract_validator.py).
 
-    Phase 0 required fields are populated. Deferred fields (cost_model,
-    slippage_model, capacity_estimate, payoff_distribution, etc.) are NOT
-    yet present; they will be added as Optional fields when their consuming
-    machinery ships in Phase 2+. CONTRACT.md "Deferred fields" lists the
-    trigger phases.
+    Phase 0 required fields are populated by the agent. Phase 1 NEW Cluster
+    B introduces the verification fields (calibrated_forecast, calibrated
+    expected utility, tradable_edge_score, final_action, kelly_fraction,
+    cost_estimate). Deferred fields (capacity_estimate, payoff_distribution,
+    etc.) are NOT yet present; they will be added as Optional fields when
+    their consuming machinery ships. CONTRACT.md "Deferred fields" lists
+    the trigger phases.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -246,28 +218,38 @@ class Contract(BaseModel):
     model_id: str
     prompt_version: str
 
+    # --- COGNITION FIELDS (agent-emitted) ---
+
     # What the agent looked at
     evidence_ids: list[EvidenceRef]
+    data_sources_used: list[str] = Field(default_factory=list)
 
-    # What the agent thinks the world is
-    hidden_state_hypotheses: list[HiddenStateHypothesis]
-    ai_belief: BeliefDistribution
+    # What the agent forecasts
+    forecast_distribution: ForecastDistribution
+    signal_class_id: str
+    thesis_category: str = ""
 
-    # What the agent thinks the market thinks (Phase 0: None allowed)
-    market_implied_belief: MarketBeliefEstimate | None = None
-    belief_delta: BeliefDelta | None = None
-
-    # What the agent does
+    # What the agent recommends (raw; the engine may override final_action)
     horizon: str
-    action_or_no_action: ActionOrNoAction
+    recommended_action: ActionOrNoAction
     recommended_size: float = Field(ge=0.0)
 
     # How the agent will be judged
     falsifiers: list[Falsifier]
-    label_plan: LabelPlan
+    realized_return_plan: RealizedReturnPlan
 
-    # How the agent thought (for VOI — Phase 4)
+    # How the agent thought
     cognitive_audit_trail: list[CognitiveStep]
 
     # Optional memory proposal
     memory_update_proposal: MemoryUpdateProposal | None = None
+
+    # --- VERIFICATION FIELDS (Tradable-Edge Action Engine; Phase 1 NEW Cluster B+) ---
+    # All optional at Phase 0; required from Phase 1 NEW Cluster B onward.
+
+    calibrated_forecast: ForecastDistribution | None = None
+    calibrated_expected_return: float | None = None
+    calibrated_expected_utility: float | None = None
+    tradable_edge_score: float | None = None
+    kelly_fraction_applied: float | None = Field(default=None, ge=0.0)
+    final_action: ActionOrNoAction | None = None
