@@ -466,6 +466,50 @@ Each stone that introduces new formal notation adds an entry here, organized by 
 
 A formula entry must include: the formula or symbol, plain-language description, range/type, properties relevant to use (boundedness, identities), proof sketch where useful, and a pointer to the implementation. Future entries follow this pattern.
 
+## Stone 40 — promotion gate (toy mode, Constitution v5)
+
+The four-check gate decides whether a proposed memory item graduates to L3. In Phase 1 NEW Cluster G, checks 1 and 4 are wired up with real evaluation; checks 2 and 3 are stubbed `passed=False` (honest audit — see [DECISIONS.md "Honest stubs in the toy-mode promotion gate"](DECISIONS.md)). Toy-mode promotion requires both checks 1 AND 4 to pass.
+
+### Check 1 — held-out replay (toy interpretation)
+
+```
+calibration_delta = mean(brier | overall scoreboard)
+                  − mean(brier | signal_class_id == proposal.signal_class_id)
+```
+
+Passes if **both**:
+
+```
+len(rows where signal_class_id == proposal.signal_class_id) ≥ MIN_HELD_OUT_ROWS  (= 10)
+calibration_delta ≥ MIN_CALIBRATION_DELTA                                        (= 0.01)
+```
+
+Forecasts tagged with the proposal's `signal_class_id` must beat the agent's overall calibration by ≥ 1 Brier-point of improvement over a sample of ≥ 10 historical forecasts. Both thresholds are operator-tunable module constants. Real LLM-replay (re-run the model with the skill in the prompt; measure improvement) is Phase 2 NEW.
+
+### Check 4 — domain-of-validity declared (toy interpretation)
+
+```
+proposal.signal_class_id ≠ ""  AND  len(proposal.horizons) > 0
+```
+
+Literal: the proposal must carry a non-empty signal class and at least one horizon.
+
+### Promotion decision (toy mode)
+
+```
+promoted = check_1_passed AND check_4_passed
+```
+
+Checks 2 and 3 are stubbed `passed=False` and excluded from the decision. Cluster H wires up real check 2 (cross-model regression over population variants); Phase 2 NEW wires up real check 3 (survivorship against the real delisted universe).
+
+### In code
+
+- `src/fingym/memory/promotion.py` — `evaluate_proposal(proposal, scoreboard, proposed_at_episode) → MemoryArtifact | None`.
+- `MIN_HELD_OUT_ROWS = 10`, `MIN_CALIBRATION_DELTA = 0.01` (module constants).
+- Returns L3 `MemoryArtifact` on promotion with full `PromotionCheckResults` (honest stubs for 2+3); returns `None` on rejection.
+
+---
+
 ### Upcoming entries (parked, to be filled in as taught during the v5 teaching pass)
 
 - Stone 11b — Forecast Ledger (per-signal-class reliability formula and SQL view definition)

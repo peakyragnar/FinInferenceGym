@@ -307,3 +307,39 @@ This document does NOT change when:
 - We refine the YAML schema with new optional fields — update TECHNICAL.md's memory section
 
 Substantive changes to this document require deliberation logged in [DECISIONS.md](DECISIONS.md) and Michael's sign-off, the same protocol that protects [DESIGN.md](DESIGN.md).
+
+---
+
+## Toy-mode implementation status (Phase 1 NEW Cluster G — 2026-05-18)
+
+The architecture above is what we're building toward. Phase 1 NEW Cluster G implemented the toy-mode subset. This section records what's wired up vs. deferred so future audits know exactly which checks fired on each L3 artifact.
+
+### Tiers — what's live in toy mode
+
+| Tier | Toy-mode status | Notes |
+|---|---|---|
+| **L0** — Trajectory store | Scoreboard (`src/fingym/evaluator/scoreboard.py`) | In-memory `ScoreboardRow` records from Clusters A–F. Postgres-backed L0 lands in Phase 2 NEW. |
+| **L1** — Observation atoms | Skipped | No mid-session observation extraction in toy mode. |
+| **L2** — Probationary | **Collapsed into the gate** | The toy gate goes directly from `Proposal` to either L3 or rejected; no probationary tier yet. **Cluster H adds the real L2 tier** + re-validation cycles that demote skills back from L3 → L2 when later evidence undercuts them. |
+| **L3** — Promoted | `memory_registry/promoted/<id>.yaml` (pydantic-validated, append-only) | Live. |
+
+### Promotion gate — toy implementation status
+
+The four DESIGN.md checks, toy-mode status:
+
+| Check | Toy mode | Where the real version lands |
+|---|---|---|
+| 1 — Held-out replay | ✅ **real**: tag's mean Brier on the Scoreboard must beat the overall mean Brier by ≥ `MIN_CALIBRATION_DELTA (=0.01)` over ≥ `MIN_HELD_OUT_ROWS (=10)` rows | Real LLM-replay (re-run model with skill in prompt) lands in Phase 2 NEW |
+| 2 — Cross-model regression | ⛔ stubbed `passed=False`, `models_validated=[]` | Cluster H — runs ≥2 LlmAgent variants in parallel and requires the calibration improvement to hold under at least 2 |
+| 3 — Survivorship | ⛔ stubbed `passed=False`, `delisted_sample_size=0` | Phase 2 NEW — needs real delisted-universe data (SEC EDGAR for delisted CIKs; FMP/Massive don't cover pre-2024) |
+| 4 — Domain-of-validity declared | ✅ **real**: `signal_class_id` non-empty AND `horizons` non-empty | n/a; already real |
+
+Toy-mode promotion requires checks 1 AND 4 to pass. Checks 2 and 3 are written into the artifact's `PromotionCheckResults` as `passed=False` so the audit trail shows exactly which checks fired and which are pending. **When Cluster H wires up real check 2, every toy-mode-only skill correctly fails it** — they were never truly cross-model-validated. They get demoted (L3 → L2 or retired), and the audit shows why. This is the "honest stubs" pattern; see [DECISIONS.md "Honest stubs in the toy-mode promotion gate"](DECISIONS.md).
+
+### Modules (Cluster G)
+
+- `src/fingym/memory/schema.py` — pydantic models for `MemoryArtifact`, `PromotionCheckResults`, `HeldOutReplayResult`, `CrossModelRegressionResult`, `SurvivorshipCheckResult`, `DomainOfValidity`, `AuditEntry`, `DerivedFromEdge` (Phase 0 deliverable; reused unchanged in Cluster G).
+- `src/fingym/memory/promotion.py` — `Proposal` dataclass + `evaluate_proposal(proposal, scoreboard, proposed_at_episode)` gate.
+- `src/fingym/memory/storage.py` — `save_promoted_skill` (L3-only), `load_promoted_skills`, `render_for_system_prompt` (markdown injection block for `LlmAgent` system prompt).
+- `src/fingym/toys/llm_agent.py` — `LlmAgent` accepts `promoted_skills: list[MemoryArtifact]` at construction; exposes `latest_proposal` for the gate to consume.
+- `src/fingym/llm/anthropic.py` — second tool `propose_memory_item` added; `tool_choice="any"` with system-prompt instruction that `submit_forecast` is mandatory and `propose_memory_item` is optional.

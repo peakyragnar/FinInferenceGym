@@ -78,6 +78,14 @@ The agent's probability distribution over buckets of `R_realized` for a specific
 
 A practical version of the Kelly fraction that bets a multiple less than 1.0 (e.g., 0.5× Kelly, 0.25× Kelly) to absorb miscalibration of the agent's stated edge. Full Kelly assumes the edge is known exactly; in practice it is estimated. Even small overestimates lead full Kelly to overbet and risk ruin. Most professional traders run between 0.25× and 0.5× Kelly.
 
+## Held-out replay
+
+The first of the four promotion-gate checks (DESIGN.md #4). A proposed memory skill must improve the agent's calibration on trajectories the skill was NOT derived from — otherwise the skill is just curve-fit to its own evidence. **Toy-mode interpretation:** forecasts tagged with the proposal's `signal_class_id` must beat the agent's overall mean Brier by ≥ 0.01 over ≥ 10 historical Scoreboard rows. Real LLM-replay (re-running the model with the skill in the prompt) lands in Phase 2 NEW. See [FORMULAS.md "Stone 40"](FORMULAS.md) for the toy-mode formula.
+
+## Honest stub
+
+The architectural pattern of recording unvalidated checks as `passed=False` with empty/zero evidence fields, NEVER as `passed=True` with placeholder values. When a verifier (promotion gate, calibration check, audit field) runs under partial infrastructure, the audit trail must show exactly which branches were validated and which are pending. Lying with `passed=True` placeholders gets compounded later; honest stubs let the system demote them correctly when the real check finally lands. First instance: Cluster G's toy-mode promotion gate (checks 2 + 3 stubbed). See [DECISIONS.md "Honest stubs in the toy-mode promotion gate"](DECISIONS.md).
+
 ## Hypothesis
 
 A candidate value or bucket the agent entertains as possibly true. The agent never sees which hypothesis is correct — it only sees observations, and assigns belief across the hypothesis space. Under v5, the hypothesis space is the support of the agent's forecast distribution over realized returns.
@@ -95,6 +103,17 @@ The agent observes emissions and produces a forecast distribution. The forecast 
 ## Kelly fraction
 
 The fraction of bankroll that maximizes long-run compound growth rate for a given edge and outcome variance. In words: bet a fraction proportional to your edge, scaled down by how volatile the outcome is. Kelly is the unique size that earns the most compound growth without certain ruin. Bet larger than Kelly: growth falls and ruin probability rises. Bet smaller: growth falls but ruin probability is low. Optimizing Kelly is fundamentally different from maximizing single-bet expected value.
+
+## L0 / L1 / L2 / L3 (memory tiers)
+
+The four-tier semantic pyramid for memory (memory-design.md "Lean MVP architecture"):
+
+- **L0 — Trajectory store.** Every forecast, every realized return, every score. Append-only audit history. Never retrieved into future agent context directly (FMP defense, DESIGN.md #6) — queryable by structured criteria only.
+- **L1 — Observation atoms.** Mid-session structured notes the agent extracted from raw evidence ("AAPL Q3 transcript mentioned 'pricing pressure' 7 times"). Foreign-keyed to L0. Also never retrieved into future context.
+- **L2 — Probationary hypotheses.** Structured claims under validation by the promotion gate. YAML in `memory_registry/probationary/`. Not yet in agent context.
+- **L3 — Promoted skills.** Validated, gated, model-agnostic skills the agent reads at session start. YAML in `memory_registry/promoted/`. **Read directly into the system prompt; no retrieval layer.**
+
+In Cluster G toy mode, L1 is skipped and L2 is collapsed into the gate (proposals go directly to L3 or are rejected). Cluster H adds the real L2 tier with re-validation cycles. See [memory-design.md "Toy-mode implementation status"](memory-design.md) for current implementation status.
 
 ## Label
 
@@ -146,6 +165,10 @@ An observable market emission. Under v5, used by the Market-State Baseline (Trac
 ## Prior
 
 The agent's belief over its hypotheses *before* any new evidence arrives. Whatever the previous step left behind, or — at the start — a default.
+
+## Promotion gate
+
+The four-check mechanism (DESIGN.md #4) that decides whether a proposed memory item graduates to L3. The gate sits between "the LLM said this" and "future LLMs will read this." The four checks: (1) held-out replay improves calibration, (2) cross-model regression — the improvement holds under ≥2 model engines, (3) survivorship — calibrates against the delisted universe, (4) domain-of-validity declared — the skill specifies where it applies. **The gate decides, not the model.** The LLM is the *source* of memory content; the verifier is the *judge*. See [memory-design.md "Promotion gate — the four DESIGN.md checks"](memory-design.md) for the full architecture; [FORMULAS.md "Stone 40"](FORMULAS.md) for the toy-mode formula.
 
 ## Proper scoring rule
 

@@ -473,6 +473,27 @@ Every entry: **what was proposed → why rejected → principle / commitment inv
 
 ---
 
+## Honest stubs in the toy-mode promotion gate (2026-05)
+
+**Status: Decided 2026-05-18 during Phase 1 NEW Cluster G. Architectural pattern, not a one-time choice.**
+
+**Context.** Cluster G wired up Stone 40's four-check promotion gate in toy mode. Two of the four checks (#2 cross-model regression; #3 survivorship) require infrastructure that doesn't land until Cluster H (population variants) and Phase 2 NEW (real delisted universe). The `MemoryArtifact` schema requires `PromotionCheckResults` to populate all four check fields on L3 artifacts — there is no "this check didn't run" middle state.
+
+**Two options:**
+
+| Option | What the L3 YAML would say | Audit consequence |
+|---|---|---|
+| Stub checks 2+3 as `passed=True` with placeholder values | "Cross-model regression passed (`models_validated=[]`)" | A LIE. The audit claims validation happened when it didn't. |
+| Stub checks 2+3 as `passed=False` with empty/zero fields | "Cross-model regression NOT validated (`models_validated=[]`)" | The truth. Reader sees at a glance: checks 2+3 are pending. |
+
+**Decision: stub as `passed=False`** with explicit empty fields. The toy-mode promotion decision uses checks 1+4 only.
+
+**Implication.** When Cluster H wires up real check 2, every toy-mode-only skill will correctly fail it and demote back to L2 (or retire). Their L3 status was conditional on partial validation; the audit trail makes that explicit, so the demotion is *expected*, not a surprise.
+
+**Pattern name: "honest stubs."** When implementing a check / gate / verifier under partial infrastructure, mark unverified branches `passed=False` with empty/zero evidence fields, NEVER `passed=True` with placeholder evidence. This is DESIGN.md #4 (verified updates only) applied to the verification machinery itself. Next instance: real check 2 in Cluster H. Following instance: real check 3 in Phase 2 NEW.
+
+---
+
 ## Disposition guidance
 
 When a new session encounters a proposal that matches anything in this file:
