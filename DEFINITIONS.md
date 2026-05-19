@@ -168,7 +168,7 @@ The agent's belief over its hypotheses *before* any new evidence arrives. Whatev
 
 ## Promotion gate
 
-The four-check mechanism (DESIGN.md #4) that decides whether a proposed memory item graduates to L3. The gate sits between "the LLM said this" and "future LLMs will read this." The four checks: (1) held-out replay improves calibration, (2) cross-model regression — the improvement holds under ≥2 model engines, (3) survivorship — calibrates against the delisted universe, (4) domain-of-validity declared — the skill specifies where it applies. **The gate decides, not the model.** The LLM is the *source* of memory content; the verifier is the *judge*. See [memory-design.md "Promotion gate — the four DESIGN.md checks"](memory-design.md) for the full architecture; [FORMULAS.md "Stone 40"](FORMULAS.md) for the toy-mode formula.
+The four-check mechanism (DESIGN.md #4) that decides whether a proposed memory item graduates to L3. The gate sits between "the LLM said this" and "future LLMs will read this." The four checks: (1) held-out replay improves calibration, (2) cross-model regression — the improvement holds under ≥`MIN_VARIANTS_PASSING` (default 2) of the population's variants, (3) survivorship — calibrates against the delisted universe, (4) domain-of-validity declared — the skill specifies where it applies. **The gate decides, not the model.** The LLM is the *source* of memory content; the verifier is the *judge*. After Cluster H, checks 1, 2, 4 are real in toy mode; check 3 still stubbed (Phase 2 NEW). See [memory-design.md "Promotion gate — the four DESIGN.md checks"](memory-design.md); [FORMULAS.md "Stone 40"](FORMULAS.md).
 
 ## Proper scoring rule
 
@@ -181,6 +181,10 @@ The standard deviation of past price returns over a specified window. A statisti
 ## Realized return (`R_realized`)
 
 The actual log return for a (name, horizon, expression-type) over the period from decision time to horizon. Revealed at the horizon by the labelling function (which takes future price + corporate actions + payoff structure → realized log return). Not known at decision time. **The grading object for forecasts under Constitution v5** — replaces "hidden state" as the predicted object. The `realized_returns` Postgres table holds one row per resolved (Contract, horizon) pair.
+
+## Re-validation
+
+The periodic re-running of the promotion gate on every existing memory artifact, both L2 and L3 (Cluster H). Memory is not write-once: as the Scoreboard fills with new evidence, previously-promoted skills must continue to satisfy all live checks, and probationary skills get re-evaluated for graduation. Four transition outcomes: L3 stays L3, L3 demotes to L2, L2 promotes to L3, L2 retires after `MAX_L2_CYCLES` without graduating. Trigger: `should_revalidate(new_rows_since_last)` returns True every `REVALIDATION_INTERVAL_ROWS` (default 50) new Scoreboard rows. See [memory-design.md "Re-validation cycles"](memory-design.md); [FORMULAS.md "Stone 40 — Re-validation"](FORMULAS.md).
 
 ## Reflexivity
 
@@ -232,6 +236,10 @@ The four costs of holding a position over time, all of which must be priced by a
 - **Information decay** — the world drifts; conditions under which the forecast was formed may no longer hold.
 
 "I'll just wait" is not a free action.
+
+## Variant
+
+An operator-controlled LlmAgent configuration in the population (Stone 38, Cluster H). Variants differ on `model` (e.g., Haiku vs Sonnet) and `prompt_style` (e.g., default vs value-investor framing); they share everything else — emission stream, Scoreboard, calibrator, Action Engine, gate. Each variant gets its own `agent_id` on Scoreboard rows so the promotion gate can slice by variant for cross-model regression (Stone 40 check 2). **Variants are operator-controlled; tags are model-controlled** — variants are LlmAgent setups WE configure, tags (`signal_class_id` strings) are categories the LLMs invent at decision time. The Cluster H default population is `(haiku_default, haiku_value_investor, sonnet_default)`. See [memory-design.md "Toy-mode implementation status"](memory-design.md); [FORMULAS.md "Stone 38"](FORMULAS.md).
 
 ## Value of information (VoI)
 

@@ -173,6 +173,14 @@ class AnthropicClient(ForecastClient):
     api_key: str | None = None
     max_tokens: int = 1024
     temperature: float = 0.0
+    prompt_style: str = ""
+    """Additional system prompt text appended to the base prompt (Cluster H).
+    Per-variant framing for population variants (Stone 38). Empty string = use
+    only the base prompt. Examples: 'Adopt a value-investor framing...',
+    'Approach the analysis as a momentum trader who weights recent signals more
+    heavily...'. Each variant in the population can carry its own prompt_style;
+    everything else (tools, return-bucket schema, propose_memory_item) is shared.
+    """
     _client: anthropic.Anthropic | None = None
 
     def _client_or_init(self) -> anthropic.Anthropic:
@@ -215,6 +223,13 @@ class AnthropicClient(ForecastClient):
                 "cache_control": {"type": "ephemeral"},
             }
         ]
+        if self.prompt_style:
+            system_blocks.append(
+                {
+                    "type": "text",
+                    "text": self.prompt_style,
+                }
+            )
         if promoted_skills_text:
             system_blocks.append(
                 {

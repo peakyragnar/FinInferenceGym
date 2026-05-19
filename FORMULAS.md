@@ -466,9 +466,42 @@ Each stone that introduces new formal notation adds an entry here, organized by 
 
 A formula entry must include: the formula or symbol, plain-language description, range/type, properties relevant to use (boundedness, identities), proof sketch where useful, and a pointer to the implementation. Future entries follow this pattern.
 
+## Stone 38 — population variants (toy mode, Constitution v5)
+
+The population is a tuple of `LlmAgentVariant(name, model, prompt_style)` configurations that run in parallel on the same emission stream. Each variant's `name` becomes the `agent_id` on its Scoreboard rows so the gate can slice by variant.
+
+### Cluster H default population
+
+```
+DEFAULT_VARIANTS = (
+    LlmAgentVariant("haiku_default",        model="claude-haiku-4-5-20251001", prompt_style=""),
+    LlmAgentVariant("haiku_value_investor", model="claude-haiku-4-5-20251001", prompt_style=<value-investor framing>),
+    LlmAgentVariant("sonnet_default",       model="claude-sonnet-4-6",         prompt_style=""),
+)
+```
+
+3 variants; ~$0.10 per integration-test run.
+
+### `build_population` contract
+
+```
+build_population(variants: tuple[LlmAgentVariant, ...] = DEFAULT_VARIANTS,
+                 promoted_skills: list[MemoryArtifact] | None = None)
+    -> list[LlmAgent]
+```
+
+Returns one `LlmAgent` per variant. Each LlmAgent's `name` matches its variant's `name`. The same `promoted_skills` list is injected into every variant (operator can pass different subsets per variant by calling once per subset).
+
+### In code
+
+- `src/fingym/memory/population.py` — `LlmAgentVariant`, `DEFAULT_VARIANTS`, `build_population`, `HAIKU_MODEL`, `SONNET_MODEL`.
+- `src/fingym/llm/anthropic.py` — `AnthropicClient` accepts `prompt_style: str = ""` field, appended to base system prompt.
+
+---
+
 ## Stone 40 — promotion gate (toy mode, Constitution v5)
 
-The four-check gate decides whether a proposed memory item graduates to L3. In Phase 1 NEW Cluster G, checks 1 and 4 are wired up with real evaluation; checks 2 and 3 are stubbed `passed=False` (honest audit — see [DECISIONS.md "Honest stubs in the toy-mode promotion gate"](DECISIONS.md)). Toy-mode promotion requires both checks 1 AND 4 to pass.
+The four-check gate decides whether a proposed memory item graduates to L3. After Cluster H, checks 1, 2, and 4 are wired up with real evaluation; check 3 is stubbed `passed=False` (honest audit — see [DECISIONS.md "Honest stubs in the toy-mode promotion gate"](DECISIONS.md)). Toy-mode promotion to L3 requires checks 1 AND 2 AND 4 to pass; an L2 (probationary) tier catches proposals that pass checks 1 + 4 but not the cross-model threshold of check 2.
 
 ### Check 1 — held-out replay (toy interpretation)
 
@@ -494,19 +527,52 @@ proposal.signal_class_id ≠ ""  AND  len(proposal.horizons) > 0
 
 Literal: the proposal must carry a non-empty signal class and at least one horizon.
 
-### Promotion decision (toy mode)
+### Check 2 — cross-model regression (toy interpretation; Cluster H)
+
+Run check 1 inside each variant's slice of the Scoreboard. Count the variants where check 1 passes:
 
 ```
-promoted = check_1_passed AND check_4_passed
+variants_passing = [agent_id for agent_id in scoreboard.unique_agent_ids
+                    if check_1_within_variant(agent_id).passed]
+
+check_2_passed = len(variants_passing) >= MIN_VARIANTS_PASSING  (= 2)
 ```
 
-Checks 2 and 3 are stubbed `passed=False` and excluded from the decision. Cluster H wires up real check 2 (cross-model regression over population variants); Phase 2 NEW wires up real check 3 (survivorship against the real delisted universe).
+The `CrossModelRegressionResult.models_validated` field carries the agent_ids of the confirming variants.
+
+### Promotion decision (toy mode, Cluster H)
+
+```
+if not check_4_passed: return None
+if not variants_passing: return None
+if check_1_passed AND check_2_passed AND check_4_passed:
+    return L3 MemoryArtifact
+else:  # check_4 passed AND ≥1 variant confirmed AND check_2 below threshold
+    return L2 MemoryArtifact (probationary)
+```
+
+Check 3 is stubbed `passed=False` and excluded from the decision. Phase 2 NEW wires up real check 3.
+
+### Re-validation (Cluster H)
+
+Fires every `REVALIDATION_INTERVAL_ROWS = 50` new Scoreboard rows:
+
+```
+for artifact in L3:
+    rerun check 1 + 2 + 4 against current scoreboard
+    if any fails: demote to L2 (audit_trail records demotion)
+
+for artifact in L2 (where status != retired):
+    rerun check 1 + 2 + 4 against current scoreboard
+    if all pass: promote to L3 (audit_trail records promotion)
+    elif L2 cycles count >= MAX_L2_CYCLES (= 5): retire
+```
 
 ### In code
 
-- `src/fingym/memory/promotion.py` — `evaluate_proposal(proposal, scoreboard, proposed_at_episode) → MemoryArtifact | None`.
-- `MIN_HELD_OUT_ROWS = 10`, `MIN_CALIBRATION_DELTA = 0.01` (module constants).
-- Returns L3 `MemoryArtifact` on promotion with full `PromotionCheckResults` (honest stubs for 2+3); returns `None` on rejection.
+- `src/fingym/memory/promotion.py` — `evaluate_proposal(proposal, scoreboard)` (Cluster G; single-agent gate) + `evaluate_proposal_cross_model(proposal, scoreboard, min_variants_passing=2)` (Cluster H; per-variant + cross-model).
+- `src/fingym/memory/revalidation.py` — `revalidate(scoreboard, l3_dir, l2_dir, min_variants_passing, max_l2_cycles) → RevalidationReport`.
+- Module constants: `MIN_HELD_OUT_ROWS = 10`, `MIN_CALIBRATION_DELTA = 0.01`, `DEFAULT_MIN_VARIANTS_PASSING = 2`, `REVALIDATION_INTERVAL_ROWS = 50`, `MAX_L2_CYCLES = 5`.
 
 ---
 
