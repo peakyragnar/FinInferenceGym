@@ -73,7 +73,7 @@ The complete plan, by layer. Stones taught and committed are marked **✅**; sto
 - Stone 11b ✅ — **Forecast Ledger** (Constitution v5). Append-only record of every (forecast, realized bucket) pair indexed by signal class. Per-signal-class empirical reliability computed over many forecasts: "when this agent claimed X% confidence on bucket B in signal class Y, what fraction of those claims realized B?" Replaces the removed Stone 11a (market-delta scoring). MVP at `src/fingym/ledger/forecast_ledger.py` (in-memory, append-only); read API `reliability_for_signal_class` returns per-claim-bucket (avg claim, observed rate, count). Real-data version (Phase 2 NEW) is a Postgres view over `forecasts` + `realized_returns` — same read API. Full distilled summary in Layer 2 body below.
 - Stone 11c ✅ — **Calibration shrinkage** (Constitution v5). Rewrites the agent's raw forecast `F_AI` toward per-signal-class empirical reliability from the Forecast Ledger via a sample-size-weighted blend: `shrunk = (n × empirical + k × raw) / (n + k)` where `n` is the Ledger sample size in the matching claim bin and `k` is operator-tunable `prior_strength`. Empty Ledger = identity (raw passes through). Dense Ledger = empirical overwrites raw. Applied bin-by-bin to the 5-bucket forecast, then renormalized. `F_AI_calibrated` is the only thing the action gate sees; raw is preserved for audit. Full distilled summary in Layer 2 body below.
 - Stone 11d ✅ — **Tradable-Edge Action Engine / margin-of-safety gate** (Constitution v5). Calibrated expected utility under Kelly given `F_AI_calibrated` and the cost model. The signed scalar `tradable_edge_score = calibrated_expected_utility − margin_of_safety_threshold` is the gate verdict: positive → trade; non-positive → NoAction. Full distilled summary in Layer 2 body below.
-- Stone 11e ⬜ — **Market-State Baseline (Track C) isolation** (Constitution v5). Separate `src/fingym/baseline/` module reads only headline observables (rates, vol, FX, commodities) and emits its own forecast distribution. Code-level isolation: `agents/` cannot import from `baseline/`. The Baseline's processed forecast is never seen by the AI Core; the audit layer computes `incremental_AI_edge = AI realized edge − Baseline realized edge` as an attribution column. Full summary lands when taught.
+- Stone 11e ✅ (toy mechanism) — **Market-State Baseline (Track C) isolation** (Constitution v5). Separate `src/fingym/baseline/` module reads only headline observables (rate, vol, FX in toy mode) and emits its own forecast distribution via a hand-coded Bayesian Ledger over observable buckets. Code-level isolation: import-linter rule forbids `agents/`, `toys/llm_agent`, `memory/`, `action/`, `ledger/`, `evaluator/` from importing `fingym.baseline`. The audit layer computes `incremental_AI_edge = AI realized edge − Baseline realized edge` as an attribution column. Toy mechanism distilled in Phase 1 NEW Cluster I (body in Layer 2 below). Real-data version (Phase 2 NEW) substitutes real DXY / VIX / Treasury yields for the simulated AR(1) observables without touching the agent code or the gate.
 - Stone 12 ✅ — process-quality flag (narrow form). Single mechanical check per update: was there an emission (transcript, filing, fundamental release, news event) with `as_known` in the time window before this update? If yes, `motivated`. If no, `unmotivated` — agent updated with nothing new in the world to react to. Per-agent aggregate `unmotivated_update_rate`; promotion gate caps it (initial value: 10%). Survives Constitution v5 at the concept level; the body summary will be reframed under v5 vocabulary in the upcoming teaching pass.
 - Stone 13 ✅ — decision-quality with `NoAction` as first-class peer. Coherence checks on the agent's action against the inputs (forecast, calibrated expected utility, margin-of-safety threshold, costs). Survives Constitution v5 at the concept level; the v5 reformulation changes the coherence math from "gap > cost" to "tradable_edge_score > 0," and the body summary will be reframed in the upcoming teaching pass.
 - Stone 14 ✅ — **capacity-adjusted realized return** (Constitution v5). Per-Contract `realized_edge = nominal_payoff − spread − commission − market_impact(size, ADV) − alpha_decay`, where `nominal_payoff = realized_return × direction × notional` (backward-looking — the actual cash P&L before frictions, distinct from Stone 11d's forward-looking `calibrated_expected_utility`). Square-root impact law (`impact ∝ sqrt(size / ADV)`). NoAction Contracts carry `realized_edge = 0`. Sliced primarily by **deployable size bucket**; one near-tautological structural check: mean realized_edge at the agent's stated size must be `> 0` across many trades. Full distilled summary in Layer 2 body below.
@@ -788,11 +788,108 @@ The bullshitter's conviction trade is killed at the gate. The uninformed agent n
 
 **One sentence.** The Tradable-Edge Action Engine emits one signed scalar — `tradable_edge_score = calibrated_expected_utility − margin_of_safety_threshold` — as the single gate between forecast and trade; `NoAction` is a typed first-class peer, positive verdicts trade at fractional Kelly under `F_AI_calibrated`, the raw forecast never multiplies a payoff, and operator preference enters only through the threshold and Kelly fraction.
 
-### Stone 11e — Market-State Baseline (Track C) isolation (pending teaching)
+### Stone 11e — Market-State Baseline (Track C) isolation (toy instantiation, Constitution v5)
 
-Under Constitution v5, a separate `src/fingym/baseline/` module reads only headline observables (rates, vol, FX, commodities) and emits its own forecast distribution. Code-level isolation: `agents/` cannot import from `baseline/` (import-linter rule). The Baseline's processed forecast is never seen by the AI Core; the audit layer computes `incremental_AI_edge = AI realized edge − Baseline realized edge` as an attribution column. The Baseline runs an identical Action Engine on its own forecast.
+**The setup — the attribution problem.** Suppose the AI's mean realized_edge across many trades is +2%. Is that real alpha, or market beta, or vol exposure, or a simple macro signal anyone could compute from rates + VIX? Without a control, you cannot tell. **The Market-State Baseline is that control** — an intentionally information-poor module that emits its own forecast distribution and goes through the same scoring math, so the difference becomes the meaningful attribution number.
 
-The full distilled summary with worked tables — what the headline-observables space looks like, the Baseline's forecasting model (kept deliberately simple), the attribution math — lands when Stone 11e is taught (Cluster I).
+**What the Baseline sees, vs the AI.**
+
+| The AI sees | The Baseline sees |
+|---|---|
+| Every fundamental emission for every company (STRONG / MIXED / WEAK signals) | Only 3 macro time series in the toy: rate, vol, FX (each bucketed into low/mid/high) |
+| Memory (promoted L3 skills, when Cluster H is in play) | No memory |
+| Per-company specific evidence | A handful of broad market numbers |
+| The full emission stream | Just today's headline values |
+
+The Baseline is **intentionally information-poor by design.** It's not a competitor to the AI; it's the dumb null hypothesis.
+
+**Structural isolation — not by convention.** If `src/fingym/agents/` could import from `src/fingym/baseline/`, three failure modes:
+
+| Failure mode | What it would look like |
+|---|---|
+| **Leakage** | AI reads the Baseline's forecast and just copies it (or inverts it) |
+| **Anchoring** | AI conditions its confidence on what the Baseline already said |
+| **Coordination** | AI explicitly differentiates ("bullish because Baseline is bearish") — destroys their independence |
+
+The defense: an **import-linter rule** that structurally blocks any import of `fingym.baseline` from `agents/`, `toys/llm_agent`, `toys/adversarial_agents`, `memory/`, `action/`, `ledger/`, or `evaluator/`. Code in those modules literally cannot reference Baseline classes — the lint fails before commit. The two modules only meet at the Scoreboard, where their outputs sit side by side as separate `agent_id`-distinguished rows.
+
+**The `incremental_AI_edge` column.** Per (episode, horizon), both AI and Baseline make a forecast. Both run through the same Action Engine. Both produce a `realized_edge`. The Scoreboard records both as separate rows; an audit helper computes the difference:
+
+```
+incremental_AI_edge(scoreboard, ai_agent_id, baseline_agent_id="market_state_baseline")
+  = mean(realized_edge | ai_agent_id) − mean(realized_edge | baseline_agent_id)
+```
+
+Aggregated across many trades, this is THE attribution number:
+
+| AI mean realized_edge | Baseline mean realized_edge | `incremental_AI_edge` | Interpretation |
+|---:|---:|---:|---|
+| +2.0% | +0.1% | **+1.9%** | AI is doing real work; the stack added value over a simple macro model |
+| +2.0% | +1.8% | **+0.2%** | AI is barely beating macro; most of the apparent edge is repackaged market beta + vol |
+| +1.0% | +2.5% | **−1.5%** | AI is **WORSE** than the simple model. Red flag |
+| +0.5% | +0.6% | **−0.1%** | AI is approximately the same as Baseline. The fancy stack added nothing |
+
+**Without `incremental_AI_edge`, the entire system flatters itself.** With it, attribution is honest.
+
+**Track A / Track B / Track C.** DESIGN.md commits to three attribution tracks:
+
+| Track | Compares AI to | Status |
+|---|---|---|
+| A | Just realized_edge in isolation (no baseline) | Every cluster A–H uses this |
+| B | A random/uniform baseline (trivial sanity check) | Indirectly, via UniformAgent in Cluster B |
+| C | The Market-State Baseline (information-poor real-world control) | **Cluster I builds this** |
+
+Track C is the only one that matters for real-money attribution. Cluster I instantiates it in toy mode so the architecture is vetted before real DXY / VIX / yields substitute in Phase 2 NEW.
+
+**Toy implementation — Bayesian Ledger over observable buckets.** The Baseline is a hand-coded model (architectural symmetry with Cluster A's Forecast Ledger):
+
+```
+P(realized return bucket | rate_bucket, vol_bucket, fx_bucket)
+```
+
+Each of 3 observables × 3 buckets = 27 cells. Each cell stores the empirical frequency of each return bucket conditional on that (rate, vol, fx) combination. Updates run from observed (observables_at_t, realized_bucket) pairs; forecasts read the conditional distribution at the current bucket combination.
+
+The toy's `OBSERVABLE_STRENGTH: float = 0.6` constant tunes how informative the observables are about the underlying state. At 0.6, observables carry real signal but the AI's emissions are still strictly more informative; tests can lower/raise to exercise the easy-Baseline and hard-Baseline regimes.
+
+**Worked example (toy).** 50 episodes; AI = BayesianAgent on full emissions; OBSERVABLE_STRENGTH = 0.6:
+
+| Agent | Mean realized_edge |
+|---|---:|
+| AI (BayesianAgent on full emissions) | +0.018 |
+| Baseline (Bayesian Ledger over rate/vol/fx) | +0.012 |
+| **`incremental_AI_edge`** | **+0.006** |
+
+Reads: 60 bps of "real" alpha. Most of the AI's apparent edge came from macro factors the Baseline ALSO captures. Now swap the AI for ConfidentAgent (bullshitter):
+
+| Agent | Mean realized_edge |
+|---|---:|
+| AI (ConfidentAgent — bullshit) | −0.002 |
+| Baseline | +0.012 |
+| **`incremental_AI_edge`** | **−0.014** |
+
+The AI is destroying value relative to the simple macro model. **Track C is the bullshit detector** for cognition that looks fine in isolation but adds nothing.
+
+**Three properties to lock in.**
+
+1. **The Baseline is information-poor by design.** It's a CONTROL, not a competitor. If we made it information-rich, it would stop being a useful null hypothesis.
+2. **Isolation is structural, not by convention.** The import-linter rule fails the build if any non-Baseline module tries to import from `fingym.baseline`. No discipline needed; the architecture enforces itself.
+3. **Same scoring math, same costs, same horizon discipline.** The Baseline goes through the same Action Engine + structured cost model + realized_edge + per-horizon scoring as the AI. The two outputs are directly comparable.
+
+**What Cluster I does NOT prove.** Toy-mode results validate the **isolation pattern** — that modules are structurally separated, columns populate correctly, attribution helper computes the right comparison. **The numerical results in toy mode are not meaningful as "is the AI doing real work"** — both AI and Baseline observe the same simulated world, and the toy numbers mostly reflect how OBSERVABLE_STRENGTH is set. Real Track C lives in Phase 2 NEW with real macro observables and real fundamental documents.
+
+**Connection forward.** Phase 2 NEW substitutes real DXY / VIX / Treasury yields / term spread for the toy AR(1) observables. The Baseline becomes a real macro Bayesian model (or a regression, or a richer non-LLM baseline). The agent code, the gate, and the Scoreboard's `incremental_AI_edge` helper all stay the same. The architecture survives the substitution because it was always information-isolated.
+
+**In code (Cluster I).**
+
+| File | What it provides |
+|---|---|
+| `src/fingym/toys/synthetic_market.py` (extended) | `HeadlineObservables` frozen dataclass + `sample_headline_observables(state, rng)` + `OBSERVABLE_STRENGTH` constant. Three buckets per observable (low / mid / high). |
+| `src/fingym/baseline/__init__.py` | Module surface; import boundary documentation |
+| `src/fingym/baseline/market_state.py` | `MarketStateBaseline` class — Bayesian Ledger over `(rate, vol, fx)` buckets → realized return buckets. Methods: `forecast(observables) -> ForecastOverBuckets`, `record(observables, realized_bucket)` |
+| `pyproject.toml` (or `.importlinter`) | "Baseline isolation" contract — `forbidden` rule preventing other modules from importing `fingym.baseline` |
+| `src/fingym/evaluator/scoreboard.py` (extended) | `Scoreboard.incremental_AI_edge(ai_agent_id, baseline_agent_id)` aggregation helper |
+
+**One sentence.** Stone 11e's Market-State Baseline is a structurally-isolated, information-poor `src/fingym/baseline/` module that consumes only headline observables (rate, vol, FX in toy mode) and emits its own forecast through the same Action Engine and realized_edge pipeline; the Scoreboard's `incremental_AI_edge` column is the AI's mean realized_edge minus the Baseline's — the only attribution number that distinguishes real cognition from a repackaged macro signal.
 
 ### Stone 12 — process-quality flag (narrow form) — v5 reframing pending teaching
 

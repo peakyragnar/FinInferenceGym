@@ -43,6 +43,7 @@ type ReturnBucket = Literal[
     "plus_5_to_plus_10",
     "above_plus_10",
 ]
+type ObservableBucket = Literal["low", "mid", "high"]
 type LikelihoodTable = dict[CompanyState, dict[Emission, float]]
 type Belief = dict[CompanyState, float]
 type ForecastOverBuckets = dict[ReturnBucket, float]
@@ -261,6 +262,95 @@ def time_leak_guard(records: Iterable[EmissionRecord], query_tick: int) -> list[
         if existing is None or r.as_known > existing.as_known:
             latest_by_as_of[r.as_of] = r
     return sorted(latest_by_as_of.values(), key=lambda r: r.as_of)
+
+
+# ----------------------------------------------------------------------------
+# Stone 11e — headline observables (Cluster I). Three macro time series
+# (rate, vol, fx) each bucketed into {low, mid, high}. The Market-State
+# Baseline (src/fingym/baseline/) consumes ONLY these; the AI sees the
+# emissions. OBSERVABLE_STRENGTH tunes how informative the observables
+# are about the underlying state (0 = uniform / no info; 1 = deterministic
+# from state). Default 0.6 = moderate; observables carry real signal but
+# the AI's emissions are still strictly more informative.
+# ----------------------------------------------------------------------------
+
+OBSERVABLE_BUCKETS: tuple[ObservableBucket, ...] = ("low", "mid", "high")
+
+OBSERVABLE_STRENGTH: float = 0.6
+"""How tightly correlated each observable is with the underlying CompanyState.
+0.0 = uniform across buckets (no signal). 1.0 = deterministic from state.
+Default 0.6: Baseline has real signal; AI's emissions still strictly richer."""
+
+# The "natural" observable bucket for each company state. All three
+# observables (rate, vol, fx) share the same state→bucket mapping in the
+# toy: strengthening => low; stable => mid; decaying => high. Real-world
+# observables have richer correlation structures (rates and vol diverge,
+# fx has its own dynamics); Phase 2 NEW with real data captures that.
+_NATURAL_BUCKET_FOR_STATE: dict[CompanyState, ObservableBucket] = {
+    "strengthening": "low",
+    "stable": "mid",
+    "decaying": "high",
+}
+
+
+@dataclass(frozen=True)
+class HeadlineObservables:
+    """Three macro observables emitted by the toy world at decision time
+    (Stone 11e, Cluster I). The Market-State Baseline consumes only these
+    — never the per-company emission stream. The AI Core may also see
+    these (DESIGN.md #10 says the AI sees the same raw observables the
+    Baseline does); in the toy MVP the AI does not yet consume them
+    (deferred). The isolation enforced by the import-linter is about the
+    Baseline's PROCESSED forecast, not the raw observables.
+    """
+
+    rate: ObservableBucket
+    vol: ObservableBucket
+    fx: ObservableBucket
+
+
+def _sample_observable_bucket(
+    state: CompanyState,
+    rng: random.Random,
+    strength: float,
+) -> ObservableBucket:
+    """Pick a bucket from {low, mid, high} biased toward the state's natural
+    bucket by `strength`. At strength=0, uniform (1/3 each); at strength=1,
+    deterministic on the natural bucket."""
+    natural = _NATURAL_BUCKET_FOR_STATE[state]
+    # Probability mass: strength on the natural bucket, (1-strength)/3 spread
+    # uniformly across all three (including the natural one).
+    natural_prob = strength + (1.0 - strength) / 3.0
+    other_prob = (1.0 - strength) / 3.0
+    weights: list[float] = []
+    for b in OBSERVABLE_BUCKETS:
+        weights.append(natural_prob if b == natural else other_prob)
+    return rng.choices(list(OBSERVABLE_BUCKETS), weights=weights, k=1)[0]
+
+
+def sample_headline_observables(
+    state: CompanyState,
+    rng: random.Random,
+    strength: float = OBSERVABLE_STRENGTH,
+) -> HeadlineObservables:
+    """Sample three macro observables (rate, vol, fx) correlated with state.
+
+    Each observable is sampled independently via `_sample_observable_bucket`.
+    In the toy, all three observables share the same state→natural-bucket
+    mapping, so they're highly correlated with each other; that's a
+    feature, not a bug — the Baseline's Bayesian Ledger over the joint
+    (rate, vol, fx) space gets to learn the conditional structure.
+
+    `strength` is the operator-tunable knob. Use the module default
+    (`OBSERVABLE_STRENGTH = 0.6`) for routine integration tests; override
+    in specific tests that need to exercise weak-baseline or strong-
+    baseline regimes.
+    """
+    return HeadlineObservables(
+        rate=_sample_observable_bucket(state, rng, strength),
+        vol=_sample_observable_bucket(state, rng, strength),
+        fx=_sample_observable_bucket(state, rng, strength),
+    )
 
 
 def return_to_bucket(realized_log_return: float) -> ReturnBucket:

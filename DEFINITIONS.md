@@ -90,6 +90,10 @@ The architectural pattern of recording unvalidated checks as `passed=False` with
 
 A candidate value or bucket the agent entertains as possibly true. The agent never sees which hypothesis is correct — it only sees observations, and assigns belief across the hypothesis space. Under v5, the hypothesis space is the support of the agent's forecast distribution over realized returns.
 
+## Incremental AI edge
+
+The Track C attribution number (PYRAMID Stone 11e). `incremental_AI_edge = mean(AI realized_edge) − mean(Baseline realized_edge)`, computed per (agent_id) slice of the Scoreboard. Without it, the AI's absolute realized_edge could be repackaged macro beta or vol exposure; with it, only the portion of edge that exceeds an information-poor macro baseline survives. The only attribution number honest enough to claim alpha against. See [memory-design.md](memory-design.md); [FORMULAS.md "Stone 11e"](FORMULAS.md); the `Scoreboard.incremental_ai_edge(ai_agent_id, baseline_agent_id)` helper in `src/fingym/evaluator/scoreboard.py`.
+
 ## Inference chain
 
 The structural loop the gym is built around:
@@ -129,6 +133,10 @@ If observations are treated as labels, the gym becomes fake.
 ## Likelihood
 
 How often a given hypothesis would produce the observation that was just seen, if that hypothesis were true. A property of the world, not the agent. Likelihoods do not depend on the agent's belief.
+
+## Market-State Baseline
+
+The Track C attribution control (PYRAMID Stone 11e, DESIGN.md #10). A separate `src/fingym/baseline/` module that consumes only headline observables (rate, vol, FX in toy mode; real DXY / VIX / Treasury yields in Phase 2 NEW) and emits its own forecast distribution over realized returns. **Information-poor by design** — not a competitor to the AI; the dumb null hypothesis. Runs through the same Action Engine + structured cost model + realized_edge pipeline as the AI; rows land on the Scoreboard under `agent_id="market_state_baseline"`. Structurally isolated: an import-linter rule blocks any non-Baseline module from importing `fingym.baseline`. Toy implementation: hand-coded Bayesian Ledger over `(rate_bucket, vol_bucket, fx_bucket) → realized return bucket`. See [memory-design.md](memory-design.md); [FORMULAS.md "Stone 11e"](FORMULAS.md).
 
 ## Market impact
 
@@ -236,6 +244,10 @@ The four costs of holding a position over time, all of which must be priced by a
 - **Information decay** — the world drifts; conditions under which the forecast was formed may no longer hold.
 
 "I'll just wait" is not a free action.
+
+## Track A / Track B / Track C
+
+The three attribution tracks for scoring AI realized_edge (DESIGN.md commitment). **Track A**: just realized_edge in isolation — no baseline; what Clusters A–H measure. **Track B**: AI vs. a random / uniform baseline (a trivial sanity check; indirectly captured via UniformAgent in Cluster B). **Track C**: AI vs. the Market-State Baseline (the information-poor macro control). Cluster I instantiates Track C in toy mode; real-money attribution lives there. Without Track C, the AI's apparent edge cannot be distinguished from repackaged market beta or vol exposure. See [memory-design.md](memory-design.md).
 
 ## Variant
 

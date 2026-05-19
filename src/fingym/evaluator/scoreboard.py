@@ -120,5 +120,32 @@ class Scoreboard:
             seen_set.add(r.horizon)
         return seen
 
+    # ---- Track C attribution (Stone 11e; Cluster I) -------------------------
+
+    def incremental_ai_edge(
+        self,
+        ai_agent_id: str,
+        baseline_agent_id: str,
+    ) -> float:
+        """Track C attribution helper: mean(AI realized_edge) - mean(Baseline
+        realized_edge), where both means are taken over each agent's slice
+        of the Scoreboard (PYRAMID Stone 11e).
+
+        This is THE attribution number. Without it, the AI's absolute
+        realized_edge could be repackaged macro beta. With it, only the
+        portion of edge that exceeds an information-poor macro baseline
+        survives.
+
+        Raises ValueError if either slice is empty (the caller must
+        ensure both the AI and the Baseline have logged forecasts).
+        """
+        ai_rows = self.filter_by_agent(ai_agent_id)
+        baseline_rows = self.filter_by_agent(baseline_agent_id)
+        if not ai_rows:
+            raise ValueError(f"No Scoreboard rows for AI agent_id={ai_agent_id!r}.")
+        if not baseline_rows:
+            raise ValueError(f"No Scoreboard rows for Baseline agent_id={baseline_agent_id!r}.")
+        return self.mean_realized_edge(ai_rows) - self.mean_realized_edge(baseline_rows)
+
 
 __all__ = ["Scoreboard", "ScoreboardRow"]

@@ -82,6 +82,17 @@ repos:
         types: [python]
         exclude: ^(tests/|mechanisms/|src/fingym/evaluator/|src/fingym/toys/)
 
+      # DESIGN.md #10 / PYRAMID Stone 11e — Market-State Baseline isolation.
+      # The AI Core MUST NOT import from fingym.baseline; the two modules
+      # meet only at the Scoreboard. Cluster I (Phase 1 NEW) instantiates
+      # the toy-mode Baseline; this lint keeps the isolation structural.
+      - id: no-baseline-imports
+        name: no imports of fingym.baseline outside src/fingym/baseline/
+        entry: uv run python mechanisms/lints/no_baseline_imports.py
+        language: system
+        types: [python]
+        exclude: ^(tests/|src/fingym/baseline/|mechanisms/)
+
       # DESIGN.md #5 — type discipline enforces cognition/verification
       # boundary at the code level. Runs `uv run mypy` so the type-checker
       # sees the project's locked dep graph (single source of truth in

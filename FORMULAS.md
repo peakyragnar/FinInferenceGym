@@ -576,12 +576,70 @@ for artifact in L2 (where status != retired):
 
 ---
 
+## Stone 11e — Market-State Baseline (Track C) attribution (toy mode, Constitution v5)
+
+The information-poor null hypothesis. A `MarketStateBaseline` consumes ONLY headline observables (`rate`, `vol`, `fx` bucketed into `low / mid / high`) and emits a forecast distribution via a Bayesian Ledger over the joint observable space. Runs through the same Action Engine + structured cost + realized_edge pipeline as the AI; rows land on the Scoreboard under `agent_id = "market_state_baseline"`.
+
+### The Bayesian Ledger structure
+
+```
+cell_counts: dict[(rate, vol, fx), dict[ReturnBucket, int]]
+```
+
+3 observables × 3 buckets = 27 cells. Each cell accumulates counts of realized buckets observed under that observable combination.
+
+### Forecast at observables = (r, v, fx)
+
+```
+forecast(observables) = normalize(cell_counts[(r, v, fx)])
+                      = {bucket: count / total for bucket, count in cell}
+```
+
+If `total == 0` (empty cell — never observed), fall back to **uniform**:
+
+```
+forecast(observables) = {bucket: 1/5 for bucket in RETURN_BUCKETS}
+```
+
+### Update from observation
+
+```
+record(observables, realized):
+    cell_counts[(observables.rate, observables.vol, observables.fx)][realized] += 1
+```
+
+### Track C attribution (`incremental_AI_edge`)
+
+```
+incremental_AI_edge(scoreboard, ai_agent_id, baseline_agent_id)
+  = mean(realized_edge | agent_id == ai_agent_id)
+  − mean(realized_edge | agent_id == baseline_agent_id)
+```
+
+Both means are taken over each agent's own slice of the Scoreboard. Raises `ValueError` if either slice is empty. **This is the only attribution number honest enough to claim alpha against** — without it, the AI's absolute realized_edge could be repackaged macro beta.
+
+### Toy strength knob
+
+```
+OBSERVABLE_STRENGTH ∈ [0.0, 1.0]   default 0.6
+```
+
+At 0.0: observables are uniform across buckets (no signal). At 1.0: observable bucket is deterministic from state. Default 0.6 = moderate; Baseline carries real signal, but the AI's emissions are strictly more informative.
+
+### In code
+
+- `src/fingym/toys/synthetic_market.py` — `HeadlineObservables` dataclass + `sample_headline_observables(state, rng, strength)` + `OBSERVABLE_STRENGTH` constant + `_NATURAL_BUCKET_FOR_STATE` mapping.
+- `src/fingym/baseline/market_state.py` — `MarketStateBaseline` class with `forecast`, `record`, `cell_sample_size`; `BASELINE_AGENT_ID = "market_state_baseline"`.
+- `src/fingym/evaluator/scoreboard.py` — `Scoreboard.incremental_ai_edge(ai_agent_id, baseline_agent_id) -> float`.
+- `mechanisms/lints/no_baseline_imports.py` — structural lint enforcing the isolation; `.pre-commit-config.yaml` registers the `no-baseline-imports` hook.
+
+---
+
 ### Upcoming entries (parked, to be filled in as taught during the v5 teaching pass)
 
 - Stone 11b — Forecast Ledger (per-signal-class reliability formula and SQL view definition)
 - Stone 11c — calibration shrinkage (how raw forecast is shrunk toward empirical reliability)
 - Stone 11d — Tradable-Edge Action Engine (calibrated expected utility; Kelly under shrunk distribution; margin-of-safety threshold)
-- Stone 11e — Market-State Baseline (Track C) attribution math (incremental AI edge formula)
 - Stone 12 (v5 reframing) — process-quality flag (motivated-update mechanical check)
 - Stone 13 (v5 reframing) — decision quality under the margin-of-safety gate
 - Kelly fraction: `f* = edge / odds_squared` (Stone 33)
