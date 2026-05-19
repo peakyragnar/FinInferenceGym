@@ -33,12 +33,10 @@ from fingym.memory.schema import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SAMPLE_PATH = (
-    REPO_ROOT
-    / "memory_registry"
-    / "promoted"
-    / "00000000-0000-0000-0000-000000000001-illustrative.yaml"
-)
+# The illustrative L3 fixture used by this schema-validation test. Kept
+# under tests/fixtures/ so it does NOT pollute `memory_registry/promoted/`
+# (which the operator dashboard reads as the live promoted-skills directory).
+SAMPLE_PATH = REPO_ROOT / "tests" / "fixtures" / "memory" / "illustrative_l3_skill.yaml"
 
 
 def _l2_kwargs(**overrides: Any) -> dict[str, Any]:

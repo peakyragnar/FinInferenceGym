@@ -226,6 +226,8 @@ def _make_row(
 ) -> ScoreboardRow:
     """Build a ScoreboardRow by running decide + realized_edge for one
     agent's forecast at one episode/horizon."""
+    from fingym.evaluator.scoring import brier, log_score
+
     verdict = decide(forecast, INTEGRATION_COST, threshold=INTEGRATION_THRESHOLD)
     edge = realized_edge(verdict.final_action, realized_return, INTEGRATION_COST)
     return ScoreboardRow(
@@ -242,8 +244,8 @@ def _make_row(
         final_action=verdict.final_action,
         realized_return=realized_return,
         realized_bucket=realized_bucket,
-        brier=0.0,
-        log_score=0.0,
+        brier=brier(forecast, realized_bucket),
+        log_score=log_score(forecast, realized_bucket),
         realized_edge=edge,
     )
 
@@ -369,6 +371,64 @@ def test_incremental_ai_edge_raises_on_missing_agent(
         sb.incremental_ai_edge("present_agent", "missing_agent")
     with pytest.raises(ValueError, match="No Scoreboard rows for"):
         sb.incremental_ai_edge("missing_agent", "present_agent")
+
+
+# ---------------------------------------------------------------------------
+# Dashboard demo — persists Scoreboard for the operator dashboard
+# ---------------------------------------------------------------------------
+
+
+def test_persist_dashboard_demo_scoreboard(
+    trained_baseline: MarketStateBaseline,
+) -> None:
+    """Run BayesianAgent + ConfidentAgent side-by-side with the Baseline
+    and write the combined Scoreboard to `data_cache/scoreboard.jsonl`
+    so the operator dashboard has real data to render.
+
+    No API calls (BayesianAgent / ConfidentAgent are hand-coded). The
+    file gets overwritten each pytest run — last run wins. The dashboard
+    at `uv run python -m fingym.operator report` reads from this path
+    by default; after `uv run pytest`, the dashboard shows:
+      - bayesian_agent + confident_agent + market_state_baseline rows
+      - Per-agent mean realized_edge (BayesianAgent > Baseline > Confident)
+      - Track C incremental_AI_edge per agent vs the Baseline
+
+    The point: provide a sanity-check view of the architecture in
+    operation. Real session data lands here in Phase 2 NEW when real-
+    data tests start emitting Scoreboards that mean something as alpha.
+    """
+    from fingym.evaluator.scoreboard_io import append_row
+
+    project_root = Path(__file__).resolve().parents[2]
+    out_path = project_root / "data_cache" / "scoreboard.jsonl"
+    # Overwrite: last pytest run wins.
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    if out_path.exists():
+        out_path.unlink()
+
+    # Combined Scoreboard: BayesianAgent run + ConfidentAgent run.
+    combined = Scoreboard()
+    bayesian_sb = _run_side_by_side(
+        trained_baseline,
+        lambda: BayesianAgent(DEFAULT_BAYESIAN_PRIOR, name="BayesianAgent"),
+        ai_agent_id="bayesian_agent",
+    )
+    confident_sb = _run_side_by_side(
+        trained_baseline,
+        lambda: ConfidentAgent("below_minus_5", confidence=0.95),
+        ai_agent_id="confident_agent",
+    )
+    # Merge: BayesianAgent's rows + ConfidentAgent's rows + Baseline rows
+    # from each (the Baseline appears in both sub-Scoreboards; we keep
+    # both — they represent two separate decision-time evaluations).
+    for row in (*bayesian_sb.rows, *confident_sb.rows):
+        combined.append(row)
+        append_row(row, out_path)
+
+    # Sanity: the file was written and round-trips.
+    assert out_path.exists()
+    rows_on_disk = out_path.read_text().count("\n")
+    assert rows_on_disk == combined.total_rows()
 
 
 # ---------------------------------------------------------------------------
