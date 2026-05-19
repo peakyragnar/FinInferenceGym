@@ -19,8 +19,12 @@ from pathlib import Path
 def _load_env_file_if_present() -> None:
     """Populate os.environ from `.env` at the project root.
 
-    Skipped for keys already set in the shell (shell wins). Skipped for
-    blank values. Silently noops if `.env` is missing.
+    A NON-EMPTY shell value wins over `.env` (so an explicit `export` from
+    the shell takes precedence). But an EMPTY shell value (e.g.,
+    `export ANTHROPIC_API_KEY=` lingering from a prior session) does NOT
+    block the `.env` value — empty/blank shell values are treated as
+    "unset" and replaced. Blank `.env` values are skipped. Silently noops
+    if `.env` is missing.
     """
     env_path = Path(__file__).resolve().parent.parent / ".env"
     if not env_path.exists():
@@ -37,7 +41,10 @@ def _load_env_file_if_present() -> None:
         value = value.split("#", 1)[0].strip().strip("\"'")
         if not key or not value:
             continue
-        os.environ.setdefault(key, value)
+        # Override empty/blank shell values; respect non-empty ones.
+        existing = os.environ.get(key, "").strip()
+        if not existing:
+            os.environ[key] = value
 
 
 _load_env_file_if_present()
