@@ -91,7 +91,7 @@ repos:
         entry: uv run python mechanisms/lints/no_baseline_imports.py
         language: system
         types: [python]
-        exclude: ^(tests/|src/fingym/baseline/|mechanisms/)
+        exclude: ^(tests/|src/fingym/baseline/|src/fingym/operator/|mechanisms/)
 
       # DESIGN.md #5 — type discipline enforces cognition/verification
       # boundary at the code level. Runs `uv run mypy` so the type-checker

@@ -813,6 +813,8 @@ The Baseline is **intentionally information-poor by design.** It's not a competi
 
 The defense: an **import-linter rule** that structurally blocks any import of `fingym.baseline` from `agents/`, `toys/llm_agent`, `toys/adversarial_agents`, `memory/`, `action/`, `ledger/`, or `evaluator/`. Code in those modules literally cannot reference Baseline classes — the lint fails before commit. The two modules only meet at the Scoreboard, where their outputs sit side by side as separate `agent_id`-distinguished rows.
 
+**Two exempt locations** by design: `tests/` (integration tests need to verify both AI and Baseline produce paired outputs) and `src/fingym/operator/` (the audit layer per DESIGN.md #10 — read-only, surfaces both agent and Baseline metrics in its inspectability report). Both exemptions are structural: the operator dashboard is the auditor's surface, not the AI Core; the lint's `EXEMPT_PREFIXES` makes this commitment visible.
+
 **The `incremental_AI_edge` column.** Per (episode, horizon), both AI and Baseline make a forecast. Both run through the same Action Engine. Both produce a `realized_edge`. The Scoreboard records both as separate rows; an audit helper computes the difference:
 
 ```

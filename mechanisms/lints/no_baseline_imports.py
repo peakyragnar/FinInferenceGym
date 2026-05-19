@@ -38,9 +38,16 @@ FORBIDDEN_IMPORTS = re.compile(r"^\s*(?:from|import)\s+(fingym\.baseline)(?:\s|\
 # The Baseline package; the only legitimate location for `fingym.baseline` imports.
 ALLOWED_PREFIX = "src/fingym/baseline/"
 
-# Test code is exempt — integration tests legitimately import both AI and
-# Baseline to verify they produce paired outputs on the Scoreboard.
-EXEMPT_PREFIXES: tuple[str, ...] = ("tests/",)
+# Exempt code:
+#   - tests/: integration tests legitimately import both AI and Baseline
+#     to verify they produce paired outputs on the Scoreboard.
+#   - src/fingym/operator/: the audit layer per DESIGN.md #10. The
+#     operator dashboard is read-only and surfaces both AI and Baseline
+#     outputs side by side; it imports BASELINE_AGENT_ID to slice the
+#     Scoreboard for Track C attribution. It does NOT import Baseline
+#     cognition, only the identity constant. Audit-layer exemption is
+#     structurally distinct from the AI Core's exclusion.
+EXEMPT_PREFIXES: tuple[str, ...] = ("tests/", "src/fingym/operator/")
 
 
 def check_file(path: Path) -> list[tuple[int, str]]:
