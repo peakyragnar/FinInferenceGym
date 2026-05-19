@@ -53,7 +53,7 @@ Memory artifacts live as **YAML files in `memory_registry/` in git** — version
 
 ## v5 component modules
 
-Three modules introduced by Constitution v5 (see [DECISIONS.md "Constitution tightening v5"](DECISIONS.md)). Specifications land in v5 revision; implementations land in Phase 1 NEW (`ledger/`, `action/`, toy `baseline/`) and Phase 2 NEW (real-data `baseline/`).
+Three modules introduced by Constitution v5 (see [DECISIONS.md "Constitution tightening v5"](DECISIONS.md)). All three implemented end-to-end in Phase 1 NEW (closed 2026-05-18): `ledger/` (Cluster A), `action/` (Cluster B), toy `baseline/` (Cluster I). Phase 2 NEW substitutes real-data inputs into the same modules without changing their interfaces.
 
 ### Forecast Ledger module — `src/fingym/ledger/`
 
