@@ -36,11 +36,12 @@ import anthropic
 from anthropic.types import (
     MessageParam,
     TextBlockParam,
-    ToolChoiceToolParam,
+    ToolChoiceAnyParam,
     ToolParam,
 )
 
 from fingym.llm.contract import ForecastClient, ForecastResponse
+from fingym.memory.promotion import Proposal
 from fingym.toys.synthetic_market import RETURN_BUCKETS, Emission, ReturnBucket
 
 DEFAULT_MODEL: str = "claude-haiku-4-5-20251001"
@@ -56,8 +57,8 @@ stream of fundamental signals about a company. Each signal is one of:
     guidance cut, adverse competitive shift)
 
 Read the full signal stream. Form your view of the company's likely
-realized log return at horizon. Then call the `submit_forecast` tool
-with:
+realized log return at horizon. Then ALWAYS call the `submit_forecast`
+tool with:
 
   - `distribution`: your probability over the five return buckets:
         below_minus_5     (return below -5%)
@@ -74,8 +75,19 @@ with:
   - `thesis_category`: a short prose label (1-2 sentences) summarizing
     your view. Free-form; for audit only.
 
-You must call `submit_forecast` exactly once. Do not produce any other
-output."""
+OPTIONALLY, if you've identified a generalizable insight worth
+remembering (a pattern that should help future forecasts under the
+same signal_class_id), ALSO call the `propose_memory_item` tool with:
+
+  - `content`: the rule / heuristic / observation in 1-3 sentences
+  - `signal_class_id`: which class of forecasts this applies to (often
+    the same one you just submitted)
+  - `horizons`: which horizon ticks the insight applies to (integers
+    like [1] or [3, 6, 12])
+
+The promotion gate decides whether to add proposals to the agent's
+long-term memory. Most calls should NOT propose anything — propose only
+when you genuinely see a generalizable pattern, not after every forecast."""
 
 _SUBMIT_FORECAST_TOOL: ToolParam = {
     "name": "submit_forecast",
@@ -102,6 +114,35 @@ _SUBMIT_FORECAST_TOOL: ToolParam = {
             },
         },
         "required": ["distribution", "signal_class_id", "thesis_category"],
+    },
+}
+
+
+_PROPOSE_MEMORY_TOOL: ToolParam = {
+    "name": "propose_memory_item",
+    "description": (
+        "OPTIONAL. Propose a memory item to be considered for promotion "
+        "to the agent's long-term L3 memory. Use only when you have "
+        "identified a generalizable insight worth remembering."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "content": {
+                "type": "string",
+                "description": "The rule / heuristic / observation in 1-3 sentences.",
+            },
+            "signal_class_id": {
+                "type": "string",
+                "description": "Which class of forecasts this insight applies to.",
+            },
+            "horizons": {
+                "type": "array",
+                "items": {"type": "integer"},
+                "description": "Which horizon ticks the insight applies to, e.g., [1, 3, 6].",
+            },
+        },
+        "required": ["content", "signal_class_id", "horizons"],
     },
 }
 
@@ -144,14 +185,25 @@ class AnthropicClient(ForecastClient):
             self._client = anthropic.Anthropic(api_key=key)
         return self._client
 
-    def request_forecast(self, emissions: list[Emission]) -> ForecastResponse:
+    def request_forecast(
+        self,
+        emissions: list[Emission],
+        promoted_skills_text: str = "",
+    ) -> ForecastResponse:
         """Call the model with the emission stream; return structured forecast.
 
-        Uses tool calling to force structured output. Validates that the
-        distribution sums to ~1 (within float tolerance) and renormalizes
-        if the model's output is slightly off (e.g., 0.9999 due to rounding).
-        Raises ValueError if the model failed to call the tool, or returned
-        a degenerate distribution (sum <= 0).
+        Uses tool calling to force structured output. The model MUST call
+        `submit_forecast` (forced via tool_choice=any + system prompt
+        instruction) and MAY also call `propose_memory_item`. Both tool
+        calls are parsed; the proposal (if any) is returned in
+        `ForecastResponse.memory_proposal`.
+
+        `promoted_skills_text`, when non-empty, is appended to the system
+        prompt as a separate (non-cached) block so the model sees the
+        agent's promoted L3 skills at session start.
+
+        Raises ValueError if the model failed to call submit_forecast,
+        or returned a degenerate distribution (sum <= 0).
         """
         client = self._client_or_init()
         user_message = _wrap_emissions_as_prose(emissions)
@@ -163,10 +215,17 @@ class AnthropicClient(ForecastClient):
                 "cache_control": {"type": "ephemeral"},
             }
         ]
-        tool_choice: ToolChoiceToolParam = {
-            "type": "tool",
-            "name": "submit_forecast",
-        }
+        if promoted_skills_text:
+            system_blocks.append(
+                {
+                    "type": "text",
+                    "text": promoted_skills_text,
+                }
+            )
+        # tool_choice=any: model MUST call at least one tool, MAY call
+        # multiple. System prompt instructs that submit_forecast is
+        # always required; propose_memory_item is optional.
+        tool_choice: ToolChoiceAnyParam = {"type": "any"}
         messages: list[MessageParam] = [{"role": "user", "content": user_message}]
 
         response = client.messages.create(
@@ -174,26 +233,34 @@ class AnthropicClient(ForecastClient):
             max_tokens=self.max_tokens,
             temperature=self.temperature,
             system=system_blocks,
-            tools=[_SUBMIT_FORECAST_TOOL],
+            tools=[_SUBMIT_FORECAST_TOOL, _PROPOSE_MEMORY_TOOL],
             tool_choice=tool_choice,
             messages=messages,
         )
 
-        tool_use = next(
-            (block for block in response.content if block.type == "tool_use"),
-            None,
-        )
-        if tool_use is None:
+        # Collect all tool_use blocks; locate submit_forecast (required)
+        # and propose_memory_item (optional).
+        forecast_tool_use = None
+        proposal_tool_use = None
+        for block in response.content:
+            if block.type != "tool_use":
+                continue
+            if block.name == "submit_forecast":
+                forecast_tool_use = block
+            elif block.name == "propose_memory_item":
+                proposal_tool_use = block
+
+        if forecast_tool_use is None:
             raise ValueError(
                 f"Model did not call submit_forecast tool. Response content: {response.content!r}"
             )
 
-        # Anthropic SDK returns tool input as a dict (already parsed).
-        raw_input = tool_use.input
-        if not isinstance(raw_input, dict):
-            raise ValueError(f"Tool input is not a dict: {raw_input!r}")
+        # --- parse submit_forecast --------------------------------------
+        forecast_input = forecast_tool_use.input
+        if not isinstance(forecast_input, dict):
+            raise ValueError(f"submit_forecast input is not a dict: {forecast_input!r}")
 
-        raw_distribution = raw_input.get("distribution")
+        raw_distribution = forecast_input.get("distribution")
         if not isinstance(raw_distribution, dict):
             raise ValueError(f"Missing or malformed distribution: {raw_distribution!r}")
 
@@ -212,15 +279,35 @@ class AnthropicClient(ForecastClient):
         # Renormalize to handle small rounding errors from the model.
         distribution = {b: v / total for b, v in distribution.items()}
 
-        signal_class_id = str(raw_input.get("signal_class_id", "")).strip()
+        signal_class_id = str(forecast_input.get("signal_class_id", "")).strip()
         if not signal_class_id:
             raise ValueError("signal_class_id missing or empty.")
-        thesis_category = str(raw_input.get("thesis_category", ""))
+        thesis_category = str(forecast_input.get("thesis_category", ""))
+
+        # --- parse optional propose_memory_item -------------------------
+        memory_proposal: Proposal | None = None
+        if proposal_tool_use is not None:
+            proposal_input = proposal_tool_use.input
+            if isinstance(proposal_input, dict):
+                content = str(proposal_input.get("content", "")).strip()
+                proposal_sci = str(proposal_input.get("signal_class_id", "")).strip()
+                raw_horizons = proposal_input.get("horizons", [])
+                if content and proposal_sci and isinstance(raw_horizons, list) and raw_horizons:
+                    horizons_tuple: tuple[int, ...] = tuple(
+                        int(h) for h in raw_horizons if isinstance(h, int | float)
+                    )
+                    if horizons_tuple:
+                        memory_proposal = Proposal(
+                            content=content,
+                            signal_class_id=proposal_sci,
+                            horizons=horizons_tuple,
+                        )
 
         return ForecastResponse(
             distribution=distribution,
             signal_class_id=signal_class_id,
             thesis_category=thesis_category,
+            memory_proposal=memory_proposal,
         )
 
 

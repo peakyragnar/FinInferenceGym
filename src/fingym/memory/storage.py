@@ -1,0 +1,87 @@
+"""Memory persistence layer (PYRAMID Stones 39 + 40, memory-design.md).
+
+L3 promoted artifacts live as YAML files on disk at the path the caller
+chooses (default: `memory_registry/promoted/<id>.yaml`). Each artifact is
+its own file (per-item versioning via git). The directory is git-backed
+so the artifact history is auditable: every promotion, demotion, or
+retirement shows up as a git commit.
+
+This module is intentionally simple — pydantic does the schema validation
+on load; yaml does the serialization. The render_for_system_prompt helper
+formats a list of promoted artifacts into a markdown block the LlmAgent
+injects into its system prompt at session start.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import yaml
+
+from fingym.memory.schema import MemoryArtifact
+
+DEFAULT_PROMOTED_DIR: Path = Path("memory_registry") / "promoted"
+
+
+def save_promoted_skill(artifact: MemoryArtifact, directory: Path | None = None) -> Path:
+    """Write the artifact to <directory>/<id>.yaml. Returns the path.
+
+    Creates the directory if missing. The artifact's `id` becomes the
+    filename stem. Uses pydantic's `model_dump(mode="json")` so dates and
+    datetimes serialize correctly. Aliased fields (e.g., `pass` on
+    HeldOutReplayResult) round-trip correctly via `by_alias=True`.
+    """
+    if artifact.tier != "L3":
+        raise ValueError(
+            f"Only L3 artifacts are saved by save_promoted_skill; got tier={artifact.tier}"
+        )
+    directory = directory if directory is not None else DEFAULT_PROMOTED_DIR
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{artifact.id}.yaml"
+    data = artifact.model_dump(mode="json", by_alias=True)
+    path.write_text(yaml.safe_dump(data, sort_keys=False))
+    return path
+
+
+def load_promoted_skills(directory: Path | None = None) -> list[MemoryArtifact]:
+    """Read all `*.yaml` files in `directory`; validate via pydantic;
+    return the artifacts sorted by id for deterministic ordering.
+
+    Silently returns an empty list if the directory is missing. Invalid
+    YAML or schema-violating content RAISES — corrupt promoted memory is
+    a deploy-time failure, not a silent skip.
+    """
+    directory = directory if directory is not None else DEFAULT_PROMOTED_DIR
+    if not directory.exists():
+        return []
+    artifacts: list[MemoryArtifact] = []
+    for path in sorted(directory.glob("*.yaml")):
+        data = yaml.safe_load(path.read_text())
+        artifacts.append(MemoryArtifact.model_validate(data))
+    return sorted(artifacts, key=lambda a: a.id)
+
+
+def render_for_system_prompt(artifacts: list[MemoryArtifact]) -> str:
+    """Render promoted artifacts as a markdown block for injection into
+    the LlmAgent's system prompt at session start.
+
+    Empty input -> empty string (caller handles the no-memory case).
+    Each artifact contributes one block with its content + domain-of-
+    validity. The block is intentionally compact — the agent reads many
+    skills at once; verbose formatting wastes context.
+    """
+    if not artifacts:
+        return ""
+    blocks: list[str] = ["# Promoted skills (read at session start)"]
+    for art in artifacts:
+        horizons_str = ", ".join(art.domain_of_validity.horizons) or "(none)"
+        blocks.append(f"\n## {art.id}\n- Domain: horizons={horizons_str}\n- Content: {art.content}")
+    return "\n".join(blocks)
+
+
+__all__ = [
+    "DEFAULT_PROMOTED_DIR",
+    "load_promoted_skills",
+    "render_for_system_prompt",
+    "save_promoted_skill",
+]

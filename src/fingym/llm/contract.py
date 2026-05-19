@@ -20,6 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from fingym.memory.promotion import Proposal
 from fingym.toys.synthetic_market import Emission, ForecastOverBuckets
 
 
@@ -38,11 +39,18 @@ class ForecastResponse:
     `thesis_category` is a short prose label the model attaches to the
     forecast (for audit / debugging / future memory-proposal flow). Free-
     form string; treated as opaque by the verifier.
+
+    `memory_proposal` is the model's OPTIONAL candidate memory item from
+    this call (Stones 39 + 40, Phase 1 NEW Cluster G). None on most calls
+    — the model proposes only when it has a new insight worth adding to
+    L3. The promotion gate (Stone 40) evaluates the proposal against
+    held-out trajectories and decides whether to promote.
     """
 
     distribution: ForecastOverBuckets
     signal_class_id: str
     thesis_category: str = ""
+    memory_proposal: Proposal | None = None
 
 
 class ForecastClient(Protocol):
@@ -50,12 +58,23 @@ class ForecastClient(Protocol):
 
     Concrete implementations live in `src/fingym/llm/<provider>.py` and
     are constructed by the agent at startup. The agent reads the response
-    and consumes only `distribution` (for the forecast) and
-    `signal_class_id` (for the Ledger key).
+    and consumes `distribution` (for the forecast), `signal_class_id`
+    (for the Ledger key), and optionally `memory_proposal` (passed
+    through to the promotion gate).
     """
 
-    def request_forecast(self, emissions: list[Emission]) -> ForecastResponse:
+    def request_forecast(
+        self,
+        emissions: list[Emission],
+        promoted_skills_text: str = "",
+    ) -> ForecastResponse:
         """Given an ordered stream of emissions, return a structured forecast.
+
+        `promoted_skills_text` is the rendered markdown block of L3
+        promoted skills (from `render_for_system_prompt`) to inject into
+        the system prompt at the start of the model's context. Empty
+        string means "no promoted skills" — the model operates without
+        memory.
 
         The Protocol does NOT constrain whether the provider uses tool
         calls / response format / structured outputs / function calling

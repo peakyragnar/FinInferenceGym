@@ -18,6 +18,9 @@ test loops that read `forecast` multiple times per episode.
 from __future__ import annotations
 
 from fingym.llm.contract import ForecastClient
+from fingym.memory.promotion import Proposal
+from fingym.memory.schema import MemoryArtifact
+from fingym.memory.storage import render_for_system_prompt
 from fingym.toys.synthetic_market import Emission, ForecastOverBuckets
 
 DEFAULT_SIGNAL_CLASS_ID: str = "llm_unset"
@@ -30,6 +33,13 @@ class LlmAgent:
     first `.forecast` access after new observations) and caches the
     structured response. The model's self-applied `signal_class_id`
     becomes the agent's signal_class_id (the Forecast Ledger key).
+
+    Cluster G: the agent accepts `promoted_skills: list[MemoryArtifact]`
+    at construction. Promoted L3 skills are rendered into the system
+    prompt at every LLM call (cached at the client level). The agent
+    also captures the model's optional `memory_proposal` from each
+    response and exposes it via the `latest_proposal` property — the
+    promotion gate consumes that.
     """
 
     signal_class_id: str
@@ -39,6 +49,7 @@ class LlmAgent:
         client: ForecastClient,
         signal_class_id: str = DEFAULT_SIGNAL_CLASS_ID,
         name: str = "LlmAgent",
+        promoted_skills: list[MemoryArtifact] | None = None,
     ) -> None:
         self.client = client
         self.name = name
@@ -46,6 +57,9 @@ class LlmAgent:
         self._emissions: list[Emission] = []
         self._cached_forecast: ForecastOverBuckets | None = None
         self._cached_thesis: str = ""
+        self._latest_proposal: Proposal | None = None
+        self._promoted_skills: list[MemoryArtifact] = list(promoted_skills or [])
+        self._promoted_skills_text: str = render_for_system_prompt(self._promoted_skills)
 
     def observe(self, emission: Emission) -> None:
         """Append an emission to the agent's stream. Invalidates the cached
@@ -60,13 +74,18 @@ class LlmAgent:
         Lazy: calls the LLM only if new emissions arrived since the last
         access. The LLM's self-applied `signal_class_id` overwrites the
         agent's signal_class_id (so the Forecast Ledger keys match the
-        model's own categorization).
+        model's own categorization). Any optional `memory_proposal` from
+        this call is captured for the promotion gate.
         """
         if self._cached_forecast is None:
-            response = self.client.request_forecast(self._emissions)
+            response = self.client.request_forecast(
+                self._emissions,
+                promoted_skills_text=self._promoted_skills_text,
+            )
             self._cached_forecast = response.distribution
             self.signal_class_id = response.signal_class_id
             self._cached_thesis = response.thesis_category
+            self._latest_proposal = response.memory_proposal
         return self._cached_forecast
 
     @property
@@ -74,9 +93,30 @@ class LlmAgent:
         """The model's prose thesis from the latest forecast.
 
         Empty string before the first `forecast` access. Useful for audit
-        and for the future memory_update_proposal flow.
+        and for the memory-proposal flow.
         """
         return self._cached_thesis
+
+    @property
+    def latest_proposal(self) -> Proposal | None:
+        """The memory_proposal from the latest forecast call, if the model
+        emitted one. None on calls where the model didn't propose.
+
+        Consumed by the promotion gate (`evaluate_proposal`) — never by
+        the verifier directly.
+        """
+        return self._latest_proposal
+
+    @property
+    def promoted_skills(self) -> list[MemoryArtifact]:
+        """The L3 promoted skills this agent was constructed with.
+
+        Read-only snapshot — the agent does not modify L3 in-flight.
+        Skill promotion happens out-of-band via the promotion gate
+        (`evaluate_proposal`); next agent construction picks up the
+        updated L3.
+        """
+        return list(self._promoted_skills)
 
 
 __all__ = ["DEFAULT_SIGNAL_CLASS_ID", "LlmAgent"]

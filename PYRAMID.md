@@ -117,8 +117,8 @@ The complete plan, by layer. Stones taught and committed are marked **✅**; sto
 > Reordered 2026-05-16. The MECHANISMS of population (Stone 38), proposal (Stone 39), and the promotion gate (Stone 40) are first exercised in toy mode in Phase 1 NEW Clusters G and H. Real-evidence promotion is Phase 4.
 
 - Stone 38 ⬜ — population variants (≥3 agents varying in model × memory × prompt × reasoning). **First instantiation in toy mode at Phase 1 NEW Cluster H.**
-- Stone 39 ⬜ — LLM as proposer of candidate memory items. **Mechanism first exercised in toy mode at Phase 1 NEW Cluster G.**
-- Stone 40 ⬜ — the promotion gate (held-out replay + cross-model regression + survivorship check + domain-of-validity tagging). **Four-check mechanism first exercised in toy mode at Phase 1 NEW Cluster G; real-evidence promotion at Phase 4.**
+- Stone 39 ✅ (toy mechanism) — **LLM as proposer of candidate memory items.** The model emits a `propose_memory_item(content, signal_class_id, horizons)` tool call OPTIONALLY alongside `submit_forecast`. Most calls don't propose anything; the model proposes only when it sees a generalizable pattern. Toy mechanism distilled in Phase 1 NEW Cluster G (body in Layer 7 below). Real-data version is Phase 2 NEW.
+- Stone 40 ✅ (toy mechanism, partial) — **the four-check promotion gate.** In toy mode, checks 1 (held-out replay) and 4 (domain-of-validity declared) are wired up with real evaluation against the Scoreboard. Checks 2 (cross-model regression) and 3 (survivorship) are stubbed `passed=False` in the resulting `PromotionCheckResults` so the audit trail is honest about what was and was not validated — Cluster H wires up real check 2, Phase 2 NEW wires up real check 3. Toy mechanism distilled in Phase 1 NEW Cluster G (body in Layer 7 below); promoted skills land on disk as YAML at `memory_registry/promoted/<id>.yaml`.
 - Stone 41 ⬜ — Goodhart resistance via scoreboard composition (a memory item that improves only one metric is suspect)
 
 ### Apex — Year-2 own-model fine-tune ⬜ (Phase 5)
@@ -1031,6 +1031,97 @@ The agent caches this response and exposes it through the `Agent` Protocol's `.f
 | `tests/integration/test_cluster_f_pipeline.py` | 5 integration tests (smoke / full-pipeline / forecast-varies-across-streams / forecast-caching / NoAction zero-edge); auto-skip when no API key |
 
 **One sentence.** Stone 30's LLM agent reads the emission stream as natural language, self-tags its forecast with a `signal_class_id` it chooses, and emits a structured forecast distribution via tool-call — all behind a typed `ForecastClient` Protocol so the verification machinery (calibrator → Action Engine → realized_edge → Scoreboard) treats it identically to the hand-coded adversarial agents from Clusters A–E.
+
+---
+
+## Layer 7 — Memory + promotion gate (toy-first mechanisms; Phase 1 NEW Cluster G)
+
+> Stones 38 (population), 39 (proposer), 40 (promotion gate) are first exercised in toy mode in Phase 1 NEW Clusters G and H. Cluster G wires up Stones 39 + 40 with a single LLM agent; Cluster H adds the population (multiple LLM variants) and the cross-model-regression check.
+
+### Stone 39 — LLM as proposer of candidate memory items (toy instantiation, Constitution v5)
+
+**The setup.** The model emits an OPTIONAL `propose_memory_item(content, signal_class_id, horizons)` tool call alongside its mandatory `submit_forecast` call. Most calls don't propose anything. The model proposes only when it identifies a generalizable insight worth promoting to the agent's long-term memory.
+
+**What the model sees.** The system prompt instructs the model that proposing is optional and should be rare — "propose only when you genuinely see a generalizable pattern, not after every forecast." `tool_choice="any"` lets the model call either or both tools.
+
+**What the model emits.**
+
+```
+propose_memory_item(
+  content = "When 4+ of 6 fundamental signals are STRONG, expect "
+            "positive realized return at horizon 1-3.",
+  signal_class_id = "majority_strong_short_horizon",
+  horizons = [1, 3]
+)
+```
+
+The proposal is captured as a `Proposal` frozen dataclass and exposed via `LlmAgent.latest_proposal`. The promotion gate (Stone 40) decides whether to act on it.
+
+**Three properties to lock in.**
+
+1. **Proposing is opt-in, not mandatory.** The system prompt explicitly says "most calls should not propose anything." This keeps the cost down (fewer proposals to evaluate) and ensures the model doesn't pad memory with low-value items.
+2. **The model never writes directly to memory.** Proposals enter the gate (Stone 40); the gate decides. The LLM is the *source* of memory content; the verifier is the *judge* of what gets promoted. Same separation as cognition vs verification at the forecast layer (DESIGN.md #5).
+3. **The proposal is structured.** Tool-call output guarantees `content` is a string, `signal_class_id` is a string, `horizons` is a list of integers. No free-form parsing of "the model's recommendation."
+
+**Connection forward.** Stone 40's gate evaluates proposals. Cluster H runs ≥3 LLM variants in parallel; each variant can propose; the gate's cross-model regression check (real in Cluster H) requires the calibration improvement to hold under ≥2 variants. The proposal flow doesn't change — only the gate's strictness.
+
+**In code (Cluster G).**
+
+| File | What it provides |
+|---|---|
+| `src/fingym/memory/promotion.py` | `Proposal` frozen dataclass with `content`, `signal_class_id`, `horizons`, `proposed_by_agent`. |
+| `src/fingym/llm/anthropic.py` | Second tool `propose_memory_item` added alongside `submit_forecast`; `tool_choice="any"`; both tool calls parsed from the response. |
+| `src/fingym/llm/contract.py` | `ForecastResponse.memory_proposal: Proposal \| None` field. |
+| `src/fingym/toys/llm_agent.py` | `LlmAgent.latest_proposal` property exposes the latest call's proposal (or None). |
+
+**One sentence.** The LLM agent emits an OPTIONAL structured `propose_memory_item` tool call alongside its mandatory `submit_forecast` call; the proposal is captured but never written directly to memory — Stone 40's gate decides whether to promote.
+
+### Stone 40 — the four-check promotion gate (toy mechanism, Constitution v5)
+
+**The setup.** A candidate memory item is just words until something validates it. The gate is what separates "the LLM said this" from "this is real and the agent should trust it at session start." Per DESIGN.md #4, the gate is four checks:
+
+| # | Check | What it asks |
+|---:|---|---|
+| 1 | Held-out replay | Does the skill improve calibration on trajectories it was not derived from? |
+| 2 | Cross-model regression | Does the improvement hold under ≥2 model engines? |
+| 3 | Survivorship | Does the skill calibrate against the delisted shadow universe? |
+| 4 | Domain-of-validity declared | Is the skill's scope (horizons / expression_types / sectors) explicit? |
+
+**Toy mode wires up checks 1 + 4.** Checks 2 + 3 are stubbed `passed=False` in the resulting `PromotionCheckResults` — the audit trail is *honest* about what was and was not validated. Real check 2 lands in Cluster H (population variants); real check 3 lands in Phase 2 NEW (real delisted universe).
+
+**Check 1 (toy interpretation): does the proposed signal_class_id show better calibration than the agent's overall average?** Concretely: gather the Scoreboard rows tagged with the proposal's `signal_class_id`; require at least `MIN_HELD_OUT_ROWS = 10` of them; compute the tag's mean Brier; require it to beat the overall mean Brier by at least `MIN_CALIBRATION_DELTA = 0.01`. Real held-out replay (re-running the LLM with the skill in the prompt to measure improvement) lands in Phase 2 NEW.
+
+**Check 4 (toy interpretation): literal.** The proposal's `signal_class_id` must be a non-empty string and `horizons` must be a non-empty list. Without both, the gate has no idea where the skill applies.
+
+**Worked example.** A scoreboard with 45 rows: 15 under `signal_class_id="good_tag"` (mean Brier 0.10) and 30 under `signal_class_id="other_tag"` (mean Brier 0.50). Overall mean Brier: `(15 × 0.10 + 30 × 0.50) / 45 ≈ 0.37`. A proposal for `signal_class_id="good_tag"`:
+
+| Check | Result | Detail |
+|---|---|---|
+| 1: held-out replay | ✅ passed | 15 ≥ 10 rows; calibration_delta = 0.37 − 0.10 = 0.27 ≥ 0.01 |
+| 4: domain declared | ✅ passed | non-empty sci + horizons |
+| 2: cross-model regression | ❌ passed=False (toy stub) | `models_validated=[]` |
+| 3: survivorship | ❌ passed=False (toy stub) | `delisted_sample_size=0` |
+
+Toy-mode promotion decision: checks 1 + 4 only → **promoted**. The resulting L3 `MemoryArtifact` carries `promotion_check_results` with all four results; checks 2 + 3 are marked explicitly unvalidated so future audits can see "this skill cleared toy mode but never went through real cross-model or survivorship checks."
+
+**Three properties to lock in.**
+
+1. **The gate is honest about what it validated.** Checks 2 + 3 are stubbed as `passed=False` in toy mode, NOT as `passed=True` with placeholder values. Anyone reading the L3 YAML can see at a glance which checks fired. Cluster H + Phase 2 NEW flip these to real validation; the toy-mode artifacts get demoted then because they never passed the real checks.
+2. **The gate decides, not the model.** The LLM proposes; the gate evaluates. The verifier never trusts the model's claimed validity.
+3. **Promoted artifacts are append-only on disk.** YAML files at `memory_registry/promoted/<id>.yaml`, one file per artifact (per-item versioning via git). Retirement is a status change in a new file, not a deletion — full audit history preserved.
+
+**Connection forward.** Cluster H adds the population variants (Stone 38) needed for real check 2. Phase 2 NEW adds the real delisted universe for check 3. Cluster H also adds re-validation cycles: as the Scoreboard fills with new trajectories, previously-promoted skills get re-tested; failures demote them back to L2 or retire them.
+
+**In code (Cluster G).**
+
+| File | What it provides |
+|---|---|
+| `src/fingym/memory/schema.py` | `MemoryArtifact`, `PromotionCheckResults`, `HeldOutReplayResult`, `CrossModelRegressionResult`, `SurvivorshipCheckResult`, `DomainOfValidity`, `AuditEntry` (Phase 0 deliverable; reused unchanged). |
+| `src/fingym/memory/promotion.py` | `evaluate_proposal(proposal, scoreboard, proposed_at_episode) -> MemoryArtifact \| None`. Toy-mode checks 1 + 4 real; checks 2 + 3 explicitly stubbed `passed=False`. Returns L3 artifact on promotion, None on rejection. |
+| `src/fingym/memory/storage.py` | `save_promoted_skill`, `load_promoted_skills`, `render_for_system_prompt`. YAML round-trip; L3-only on save. |
+| `src/fingym/toys/llm_agent.py` | `LlmAgent` constructor accepts `promoted_skills`; renders them into the system prompt at every LLM call (via `render_for_system_prompt`). |
+
+**One sentence.** The promotion gate in toy mode runs check 1 (held-out replay against the Scoreboard) and check 4 (domain-of-validity declared) with real evaluation; checks 2 + 3 are stubbed `passed=False` and recorded honestly in the artifact's `promotion_check_results` so future audits can see exactly which checks fired and which are pending.
 
 ---
 
