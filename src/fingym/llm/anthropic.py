@@ -325,5 +325,112 @@ class AnthropicClient(ForecastClient):
             memory_proposal=memory_proposal,
         )
 
+    def request_forecast_from_text(
+        self,
+        user_message: str,
+        system_prompt: str,
+        promoted_skills_text: str = "",
+    ) -> ForecastResponse:
+        """Variant of request_forecast that takes a raw user_message + system_prompt.
+
+        Used by the real AI Core (Phase 2 NEW Step 2) where evidence is loaded
+        from Postgres + formatted as natural language directly, NOT wrapped from
+        a toy Emission list. Same tool-call structured-output protocol, same
+        response parsing — only the prompts differ.
+
+        Raises ValueError on the same conditions as request_forecast.
+        """
+        client = self._client_or_init()
+
+        system_blocks: list[TextBlockParam] = [
+            {
+                "type": "text",
+                "text": system_prompt,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
+        if self.prompt_style:
+            system_blocks.append({"type": "text", "text": self.prompt_style})
+        if promoted_skills_text:
+            system_blocks.append({"type": "text", "text": promoted_skills_text})
+
+        tool_choice: ToolChoiceAnyParam = {"type": "any"}
+        messages: list[MessageParam] = [{"role": "user", "content": user_message}]
+
+        response = client.messages.create(
+            model=self.model,
+            max_tokens=self.max_tokens,
+            temperature=self.temperature,
+            system=system_blocks,
+            tools=[_SUBMIT_FORECAST_TOOL, _PROPOSE_MEMORY_TOOL],
+            tool_choice=tool_choice,
+            messages=messages,
+        )
+
+        forecast_tool_use = None
+        proposal_tool_use = None
+        for block in response.content:
+            if block.type != "tool_use":
+                continue
+            if block.name == "submit_forecast":
+                forecast_tool_use = block
+            elif block.name == "propose_memory_item":
+                proposal_tool_use = block
+
+        if forecast_tool_use is None:
+            raise ValueError(
+                f"Model did not call submit_forecast tool. Response: {response.content!r}"
+            )
+
+        forecast_input = forecast_tool_use.input
+        if not isinstance(forecast_input, dict):
+            raise ValueError(f"submit_forecast input is not a dict: {forecast_input!r}")
+
+        raw_distribution = forecast_input.get("distribution")
+        if not isinstance(raw_distribution, dict):
+            raise ValueError(f"Missing or malformed distribution: {raw_distribution!r}")
+
+        distribution: dict[ReturnBucket, float] = {}
+        for bucket in RETURN_BUCKETS:
+            value = raw_distribution.get(bucket)
+            if not isinstance(value, int | float):
+                raise ValueError(f"Bucket {bucket!r} missing or non-numeric: {value!r}")
+            distribution[bucket] = float(value)
+
+        total = sum(distribution.values())
+        if total <= 0:
+            raise ValueError(f"Forecast distribution has non-positive total {total}.")
+        distribution = {b: v / total for b, v in distribution.items()}
+
+        signal_class_id = str(forecast_input.get("signal_class_id", "")).strip()
+        if not signal_class_id:
+            raise ValueError("signal_class_id missing or empty.")
+        thesis_category = str(forecast_input.get("thesis_category", ""))
+
+        memory_proposal: Proposal | None = None
+        if proposal_tool_use is not None:
+            proposal_input = proposal_tool_use.input
+            if isinstance(proposal_input, dict):
+                content = str(proposal_input.get("content", "")).strip()
+                proposal_sci = str(proposal_input.get("signal_class_id", "")).strip()
+                raw_horizons = proposal_input.get("horizons", [])
+                if content and proposal_sci and isinstance(raw_horizons, list) and raw_horizons:
+                    horizons_tuple: tuple[int, ...] = tuple(
+                        int(h) for h in raw_horizons if isinstance(h, int | float)
+                    )
+                    if horizons_tuple:
+                        memory_proposal = Proposal(
+                            content=content,
+                            signal_class_id=proposal_sci,
+                            horizons=horizons_tuple,
+                        )
+
+        return ForecastResponse(
+            distribution=distribution,
+            signal_class_id=signal_class_id,
+            thesis_category=thesis_category,
+            memory_proposal=memory_proposal,
+        )
+
 
 __all__ = ["DEFAULT_MODEL", "AnthropicClient"]
