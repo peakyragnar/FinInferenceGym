@@ -1,11 +1,15 @@
-"""CLI entry point: `uv run python -m fingym.operator report`."""
+"""CLI entry point: `uv run python -m fingym.operator [report|real-report]`."""
 
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
+import psycopg
+
+from fingym.operator.real_report import print_real_report
 from fingym.operator.report import print_report
 
 DEFAULT_SCOREBOARD_PATH: Path = Path("data_cache") / "scoreboard.jsonl"
@@ -43,6 +47,14 @@ def main(argv: list[str] | None = None) -> int:
         help=f"Directory holding L2 probationary-skill YAMLs. Default: {DEFAULT_L2_DIR}.",
     )
 
+    sub.add_parser(
+        "real-report",
+        help=(
+            "Print the trajectory-store report from Postgres "
+            "(real Contracts emitted by the RealLlmAgent)."
+        ),
+    )
+
     args = parser.parse_args(argv)
     if args.command == "report":
         print_report(
@@ -50,6 +62,14 @@ def main(argv: list[str] | None = None) -> int:
             l3_dir=args.l3_dir,
             l2_dir=args.l2_dir,
         )
+        return 0
+    if args.command == "real-report":
+        db_url = os.environ.get("DATABASE_URL")
+        if not db_url:
+            print("DATABASE_URL not set (run via `uv run --env-file .env ...`)", file=sys.stderr)
+            return 2
+        with psycopg.connect(db_url) as conn:
+            print_real_report(conn)
         return 0
     parser.print_help()
     return 1
