@@ -11,6 +11,12 @@ from fingym.agents.real_agent import (
     format_evidence_as_prose,
     load_evidence,
 )
+from fingym.data.queries.contracts import (
+    count_contracts,
+    list_recent_contracts,
+    load_contract,
+    save_contract,
+)
 from fingym.llm.anthropic import AnthropicClient
 
 
@@ -82,3 +88,46 @@ with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
     for bucket, prob in contract.forecast_distribution.probabilities.items():
         bar = "█" * int(prob * 40)
         print(f"    {bucket:<20} {prob:>6.3f} {bar}")
+
+    # ---- Step 3: persist to trajectory store, then round-trip verify ----
+    print("\n" + "=" * 80)
+    print(" PERSISTENCE — write to contracts table + round-trip via pydantic")
+    print("=" * 80)
+    before = count_contracts(conn)
+    print(f"  contracts in DB before save: {before}")
+
+    save_contract(conn, contract, ticker)
+    conn.commit()
+
+    after = count_contracts(conn)
+    print(f"  contracts in DB after save:  {after}")
+
+    loaded = load_contract(conn, contract.contract_id)
+    if loaded is None:
+        print("  ✗ FAILED: load_contract returned None")
+    else:
+        print("  ✓ load_contract returned a Contract")
+        # Verify a few key fields round-tripped
+        ok_id = loaded.contract_id == contract.contract_id
+        ok_sci = loaded.signal_class_id == contract.signal_class_id
+        ok_dist = (
+            loaded.forecast_distribution.probabilities
+            == contract.forecast_distribution.probabilities
+        )
+        ok_action = (
+            type(loaded.recommended_action).__name__ == type(contract.recommended_action).__name__
+        )
+        ok_evidence = len(loaded.evidence_ids) == len(contract.evidence_ids)
+        print(f"    contract_id round-trip:        {'✓' if ok_id else '✗'}")
+        print(f"    signal_class_id round-trip:    {'✓' if ok_sci else '✗'}")
+        print(f"    forecast_distribution match:   {'✓' if ok_dist else '✗'}")
+        print(f"    recommended_action type match: {'✓' if ok_action else '✗'}")
+        print(f"    evidence_ids count match:      {'✓' if ok_evidence else '✗'}")
+
+    print("\n  Recent contracts (denormalized fields):")
+    for r in list_recent_contracts(conn, limit=5):
+        print(
+            f"    {r['decision_time'].date()}  {r['ticker']:<5}  "
+            f"{r['agent_id']:<14}  {r['signal_class_id']:<36}  "
+            f"{r['recommended_action_type']:<9}  {r['recommended_expression'] or '-':<14}"
+        )
