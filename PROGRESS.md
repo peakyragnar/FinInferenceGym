@@ -8,34 +8,48 @@ Current build status. Updated at the end of every working session.
 
 **Phase 2 NEW — Real-Data Substitution (Weeks 7–10)**
 
-Status: **Started 2026-05-19.** Phase 1 NEW closed 2026-05-18 (all 9 clusters ✅, operator dashboard live, 245 tests green, mypy strict clean, 16 pre-commit hooks). Phase 2 NEW substitutes real data into the toy-trained architecture, **one data type at a time** (per BUILD.md Phase 2, [DECISIONS.md Constitution v4](DECISIONS.md)). The toy still cannot validate alpha (DESIGN.md Three Arenas); alpha validation begins here, on real data.
+Status: **Steps 1–7 complete (2026-05-19 → 2026-05-20). The full Phase 2 NEW end-to-end loop runs on real data with Track C attribution working.** Only the scaled replay (Step 8) remains before the architecture has statistically meaningful per-signal-class reliability + Track C numbers.
 
-First Phase 2 NEW work landed 2026-05-19: **`headline_observables` slice of Stone 23** — real macro substrate from FRED. 202,672 rows across 32 series on Neon, vintage=1, current-vintage values. This unblocks Stone 11e real-data Baseline work and is the foundation for the broader Stone 23 canonical-schema rollout.
+**Headline result — first real Track C attribution on real data:**
 
-See [BUILD.md Phase 2](BUILD.md#phase-2--real-data-transition-weeks-710) for the full phase definition.
+```
+agent_id                      n_matured  mean_log_return
+real_llm_v1                           6           +0.16%
+market_state_baseline_real            5           -6.22%
+```
+
+**Incremental AI edge ≈ +6.4 percentage points** on the 5-pair test sample. Statistically weak at n=5 but the architectural signal is loud — the AI Core's value comes from refusing to trade SIVB Feb 2023 (NoAction, 75% probability of below_-5% returns) when the macro-only Baseline went LONG SIVB into the collapse. This is the DESIGN.md #2 commitment ("incremental AI edge over a macro-only control") **measured for the first time on real data**.
+
+Phase 2 NEW substitutes real data into the toy-trained architecture, **one data type at a time** (per BUILD.md Phase 2, [DECISIONS.md Constitution v4](DECISIONS.md)). The toy never validated alpha (DESIGN.md Three Arenas); the real loop does. The deterministic-first ingest discipline ([real_data_ingest.md](real_data_ingest.md)) restricts Phase 2 NEW Stage 1 to data that requires no curation choices — prices, splits, dividends, ticker reference, IPOs. Fundamentals / news / transcripts each become their own subsequent stage with an explicit design pass.
+
+See [BUILD.md Phase 2](BUILD.md#phase-2--real-data-transition-weeks-710) for the full phase definition; see [real_data_ingest.md](real_data_ingest.md) for the per-stage ingest plan.
 
 ---
 
-## Phase 2 NEW — stones and status
+## Phase 2 NEW — stones and status (post Steps 1–7)
 
 | Stone | What | Status |
 |---|---|---|
 | **23 — headline_observables slice** | Real macro substrate from FRED in `headline_observables` Postgres table; 32 series, 202,672 rows; daily/weekly/monthly/quarterly cadence; ALFRED PIT verified on CPIAUCSL + PAYEMS first-prints | ✅ (2026-05-19) |
+| **23 — equity deterministic tables** | `equity_prices` (15,649 bars), `corporate_actions_splits` (11), `corporate_actions_dividends` (231), `tickers` (active + delisted), `ipos`; survivorship-clean (SIVB collapse window captured, TWTR pre-buyout captured); 7-ticker test universe | ✅ (2026-05-20) |
+| **23 — contracts trajectory store** | `contracts` table with denormalized scalars + JSONB Contract for round-trip; 16 Contracts persisted so far across AI Core + Baseline | ✅ (2026-05-20) |
 | **23 — emissions table** | Rich event-shaped table (`emissions`) with surprise/consensus/scope metadata; requires consensus vendor (Trading Economics or similar) | ⬜ deferred — vendor decision pending |
-| **23 — remaining tables** | `derived_evidence`, `forecasts`, `actions`, `realized_returns`, `scores`, Forecast Ledger view | ⬜ |
-| **11e (real data)** | Real Market-State Baseline reads from `headline_observables` (narrow 7-series subset); incremental_AI_edge attribution on real data | ⬜ unblocked — substrate exists, Baseline not yet wired |
-| **22** | Corpus QA on existing 10-year / 1700-name transcript corpus | ⬜ resequenced — was originally first Phase 2 NEW step; Michael's audit moved it after the data substrate so it can be evaluated against the broader pipeline |
-| **24** | PIT discipline at production scale (`time_leak_guard` on real timestamps; restatements via ALFRED) | ⬜ partial — toy mechanism in place; real-data ALFRED vintage tracking deferred |
-| **25** | Replay vs live parity (byte-identical output) | ⬜ |
-| **26** | Delisted shadow universe (real vendor — SEC EDGAR for delisted CIKs) | ⬜ |
-| **27** | Trajectory store with real v5 Contracts | ⬜ |
-| **28** | Raw-evidence channel operational (typed pipe delivering full unprocessed evidence) | ⬜ |
+| **23 — fundamentals table** | Long-table `(ticker, period, statement_type, line_item, vintage)` from Massive Developer legacy combined endpoint; design pass required first | ⬜ Stage 2 of real_data_ingest.md |
+| **11e (real data)** | RealMarketStateBaseline reads from `headline_observables` (7-series narrow subset); trains in 3.1s; emits Contracts to trajectory store; Track C attribution computing | ✅ (2026-05-20) |
+| **22** | Corpus QA on existing 10-year / 1700-name transcript corpus | ⬜ resequenced — deferred behind structured-first scope |
+| **24** | PIT discipline at production scale (`time_leak_guard` on real timestamps; restatements via ALFRED) | ⬜ partial — ALFRED PIT first-print verified; `as_of`-anchored PIT for non-revised market series; full vintage tracking deferred |
+| **25** | Replay vs live parity (byte-identical output) | ⬜ deferred to Phase 3 |
+| **26** | Delisted shadow universe (real vendor) | ✅ on Massive Developer within 10-year window (SIVB, TWTR confirmed); SEC EDGAR pre-2016 cross-reference deferred |
+| **27** | Trajectory store with real v5 Contracts | ✅ — `contracts` table populated; round-trip via pydantic verified |
+| **28** | Raw-evidence channel operational (typed pipe delivering full unprocessed evidence) | ✅ for deterministic data (macro + prices + corporate actions + ticker reference); text body deferred to Stage 4+ |
 
-**Vendor landscape after FRED smoke test (2026-05-19)**:
-- ✅ **FRED** (free) — rates, vol (VIX only), FX, oil, breakevens, macro emissions (CPI/NFP/GDP/etc.) with ALFRED PIT first-print
-- ✗ **HY OAS, IG OAS** — ICE licensed FRED's long history away in May 2023. Decision pending: pay ICE/Bloomberg, compute HYG-Treasury proxy, or accept 3-year history
-- ✗ **Gold spot** — not on FRED. Yahoo `GC=F` (free) is the cleanest path
-- ✗ **MOVE, VIX term structure, ISM PMI, consensus/surprise data** — separate vendor decisions deferred
+**Vendor landscape (current)**:
+- ✅ **FRED** (free) — macro substrate live, 32 series, 202K rows
+- ✅ **Massive Developer** (already subscribed, $79/mo) — equity prices + corporate actions + ticker reference for 7-name test universe; 15,649 rows + 244 events
+- ✅ **Anthropic API** (Haiku 4.5) — emitting real v5 Contracts via tool-call structured output
+- ⬜ **Massive Advanced + Benzinga** — gated behind successful Stage 1 validation (now done); ~$500/month-1 burst for fundamentals + Form 4/13-F/short interest + analyst data
+- ✗ **HY OAS / IG OAS** — ICE licensed long history away in May 2023; defer
+- ✗ **Gold spot, MOVE, VIX term, ISM PMI, consensus/surprise** — separate vendor decisions deferred
 
 ## Phase 2 NEW Exit Criteria
 
@@ -45,23 +59,56 @@ Per BUILD.md Phase 2: the toy-trained architecture works on real data end-to-end
 
 ## Next Action
 
-**Two real options, your call:**
+**Step 8 — scaled replay.** The loop is structurally complete; what remains is volume. Run both agents on a monthly decision schedule across the 7-ticker test universe over ~10 years available history:
+- ~840 (ticker, decision_date) pairs per agent (~120 monthly decisions per ticker × 7 tickers)
+- AI Core: ~840 LLM calls (~$5–20 with Haiku 4.5; less with prompt caching)
+- Baseline: ~840 instant calls ($0)
+- ~30–45 min wall-clock
+- Result: per-signal-class reliability tables fill statistically; Track C attribution becomes a real number rather than n=5 anecdote
 
-1. **Wire the real Baseline to read `headline_observables`** — closes Stone 11e real-data. Connect the toy `MarketStateBaseline` Bayesian Ledger to the new Postgres data. The Baseline reads its narrow 7-series subset at decision time. First end-to-end real-data forecast emerges.
-2. **Smoke-test next vendor** — Yahoo for gold + VIX3M + DXY ETF, then decide on MOVE (Polygon/Tradier check) and consensus data (Trading Economics) for the future emissions stone.
+After Step 8 the dashboard will show whether the AI Core's +6.4pp Track C edge holds up with real sample size. That's the architectural payoff.
 
-**Recommended: (1).** It closes a Phase 2 NEW stone end-to-end and proves the architecture actually consumes real data. Vendor expansion can follow.
+Alternative — inspect current state before scaling:
 
-### What shipped in the `headline_observables` slice (2026-05-19)
+```bash
+# Train Baseline + emit Baseline Contracts on 5 test pairs (no LLM cost)
+uv run --env-file .env python -m fingym.baseline.replay
 
-- **Migration** [migrations/versions/7a3c81f4d029_headline_observables.py](migrations/versions/7a3c81f4d029_headline_observables.py) — applied to Neon. Schema: `(series_id, as_of, as_known, value, source, vintage)`, PK `(series_id, as_of, vintage)`, index on `as_of`.
-- **Ingest** [src/fingym/data/ingest/fred.py](src/fingym/data/ingest/fred.py) — pulls 32 series via FRED API, idempotent upsert, runs in <1 min, mypy strict clean.
-- **Smoke test** [vendor_evaluations/fred_smoke_test.py](vendor_evaluations/fred_smoke_test.py) — confirms coverage / frequency / delay / history depth per series + ALFRED PIT vintage retrieval on revised series.
-- **Series in `headline_observables`**: DFF, FEDFUNDS, DGS3MO/2/5/10/30, T10Y2Y, T5YIFR, T10YIE, VIXCLS, DTWEXBGS, DEXUSEU, DEXJPUS, DEXCHUS, DCOILWTICO, DCOILBRENTEU, PCOPPUSDM, CPIAUCSL, CPILFESL, PCEPI, PCEPILFE, PAYEMS, UNRATE, INDPRO, RSAFS, HOUST, GDPC1, ICSA, CCSA, WALCL, M2SL.
+# Run AI Core on same 5 pairs
+uv run --env-file .env python scripts/run_replay_tiny.py
 
-**Architectural framing locked**: the `headline_observables` table contains all FRED macro series (continuous time series shape). The Baseline reads its narrow 7-series subset (DFF, DGS10, T10Y2Y, T5YIFR, VIXCLS, DTWEXBGS, DCOILWTICO). The AI Core's macro view of this data comes through the **future emissions table** (richer event records with surprise/consensus/scope), populated from FRED + a consensus vendor when that vendor decision lands. Both readers can access the raw `headline_observables` table; only the Baseline's processed forecast is hidden from the AI Core (per DESIGN.md isolation).
+# See the full operator dashboard
+uv run --env-file .env python -m fingym.operator real-report
+```
 
-**PIT caveat documented**: revised macro series in `headline_observables` carry current-vintage `as_known`, not first-print. Acceptable for the Baseline's 7-series subset (no material revisions). Full ALFRED vintage tracking deferred to the parked materiality/emissions stone.
+### What shipped in Phase 2 NEW Steps 1–7 (2026-05-19 → 2026-05-20)
+
+Commit chain (all on `origin/main`):
+
+| Step | Commit | What landed |
+|---|---|---|
+| Docs | `b3ff2d0`, `feb514b` | [real_data_ingest.md](real_data_ingest.md) — formalized 8-stage ingest plan, deterministic-first scope, 7-ticker test universe (AAPL, JPM, TSLA, NVDA, VST + SIVB, TWTR) |
+| Stage 0 | `5db188e` | FRED macro substrate (32 series, 202,672 rows) |
+| Stage 1 | `12ef530` | Migration `c8d7e2a91f44` + Massive Developer ingest: 15,649 OHLCV bars, 11 splits, 231 dividends, 7 ticker references, 2 IPO records, survivorship-clean for SIVB + TWTR delisting windows |
+| Step 1 | `c43bfb4` | RealMarketStateBaseline + `_load_macro_state`/`_load_ticker_prices` queries + batched 3.1s training over 7-name universe + 15,496 obs / 20 cells populated |
+| Step 2 | `1c3b1b3` | RealLlmAgent — first real v5 Contract emitted on AAPL 2025-06-01 (signal_class_id `large_cap_tech_moderate_vol_recovery`); PIT correction (`as_of`-anchored macro filter) |
+| Step 3 | `9529d7d` | Migration `d3f9c47b2a01` + `contracts` table + persistence module; round-trip verified (5/5 fields, pydantic model_validate) |
+| Step 4 | `4988b2e` | Replay orchestrator; 5-pair smoke run; LLM invented 5 distinct signal_class_ids per decision context |
+| Step 5 | `f620079` | `operator.real_report` CLI — trajectory store on a dashboard |
+| Step 6 | `7b75a58` | Forecast Ledger reliability view + realized-edge-per-agent query; dashboard sections [3] and [4] live |
+| Step 7 | `9c25577` | RealBaselineAgent + `fingym.baseline.replay` entry point (lives inside `src/fingym/baseline/` to respect the no-baseline-imports isolation rule); Track C attribution real on 5-pair sample |
+
+**Test universe locked in for Stage 1**: AAPL, JPM, TSLA, NVDA, VST + SIVB (delisted 2023-03-28) + TWTR (delisted 2022-10-31). Sector diversity (tech / financial / auto-EV / semis / utility) + two distinct delisting mechanisms (bank failure + go-private).
+
+**Architectural commitments preserved through Phase 2 NEW**:
+- DESIGN.md #2: forecast distribution over realized returns, calibrated empirically — Forecast Ledger reliability view fills as Contracts mature to horizon
+- DESIGN.md #3: time one-way valve — `as_of`-anchored PIT for non-revised market series, ALFRED first-print for revised macro emissions
+- DESIGN.md #5: cognition/verification boundary — RealLlmAgent emits Contracts (cognition); contracts table + Forecast Ledger view (verification)
+- DESIGN.md #6: raw-evidence native reasoning — AI Core reads prices + macro + corporate actions + ticker reference as natural-language prose; no pre-engineered features
+- DESIGN.md #8: two-axis improvement — trajectory store live in SFT-fit JSONB format from first Contract
+- PYRAMID Stone 11e: Baseline isolation — `mechanisms/lints/no_baseline_imports.py` correctly blocked scripts/ from importing `fingym.baseline`, forced orchestration inside the package
+
+**Vendor cost so far**: $79/month (existing Massive Developer subscription) + Anthropic API at ~$0.01 per LLM call. Stage 1 ingest + Step 4 + Step 7 baseline replays together: <$1 in API spend.
 
 ---
 
