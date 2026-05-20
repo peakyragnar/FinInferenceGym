@@ -23,6 +23,11 @@ from typing import Any
 
 import psycopg
 
+from fingym.data.queries.forecast_ledger import (
+    compute_reliability,
+    realized_edge_per_agent,
+)
+
 
 def print_real_report(conn: psycopg.Connection[Any]) -> None:
     """Print the trajectory-store report to stdout."""
@@ -44,6 +49,8 @@ def print_real_report(conn: psycopg.Connection[Any]) -> None:
 
     _print_per_ticker(conn)
     _print_per_signal_class(conn)
+    _print_realized_edge(conn)
+    _print_reliability(conn)
     _print_recent(conn)
 
 
@@ -114,9 +121,57 @@ def _print_per_signal_class(conn: psycopg.Connection[Any]) -> None:
         print(f"   {sci:<48} {n:>5}  {tickers}")
 
 
+def _print_realized_edge(conn: psycopg.Connection[Any]) -> None:
+    print()
+    print(" [3] Realized edge per agent (matured Contracts only)")
+    print(" " + "-" * 76)
+    print("     mean log return per Contract, direction-adjusted (long=+, short=-,")
+    print("     no_action=0). Track C attribution is the difference between an")
+    print("     AI agent's mean and the Baseline's mean on the same decision set.")
+    print()
+    rows = realized_edge_per_agent(conn)
+    if not rows:
+        print("   (no Contracts matured yet — none have decision_time + horizon < now)")
+        return
+    print(f"   {'agent_id':<28} {'n_matured':>10} {'mean_log_return':>16}")
+    for agent_id, n, mean_log_ret in rows:
+        pct = mean_log_ret * 100
+        print(f"   {agent_id:<28} {n:>10} {pct:>14.2f}%")
+
+
+def _print_reliability(conn: psycopg.Connection[Any]) -> None:
+    print()
+    print(" [4] Forecast Ledger reliability (per signal class and claim bin)")
+    print(" " + "-" * 76)
+    print("     each row: when this agent claimed X% on a return bucket under this")
+    print("     signal_class_id, what fraction of those claims actually realized.")
+    print("     A perfectly calibrated agent has observed_rate ≈ mean_claim.")
+    print()
+    rows = compute_reliability(conn)
+    if not rows:
+        print("   (no matured Contracts yet — reliability fills as horizons elapse)")
+        return
+    print(
+        f"   {'signal_class_id':<36} {'agent':<24} "
+        f"{'bin':>10} {'mean_claim':>10} {'observed':>9} {'n':>5}"
+    )
+    for r in rows:
+        sci = r.signal_class_id
+        if len(sci) > 35:
+            sci = sci[:32] + "..."
+        ag = r.agent_id
+        if len(ag) > 23:
+            ag = ag[:20] + "..."
+        bin_str = f"[{r.claim_bin_lo:.2f},{r.claim_bin_hi:.2f})"
+        print(
+            f"   {sci:<36} {ag:<24} "
+            f"{bin_str:>10} {r.mean_claim:>10.3f} {r.observed_rate:>9.3f} {r.count:>5}"
+        )
+
+
 def _print_recent(conn: psycopg.Connection[Any]) -> None:
     print()
-    print(" [3] Recent Contracts (most recent 10 decisions)")
+    print(" [5] Recent Contracts (most recent 10 decisions)")
     print(" " + "-" * 76)
     with conn.cursor() as cur:
         cur.execute(
